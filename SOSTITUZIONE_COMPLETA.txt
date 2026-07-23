@@ -1,0 +1,11 @@
+ISTRUZIONI PAS v1.3.1
+
+L'errore indicava che app.py e modules/charts.py non erano allineati.
+
+1. Ferma Streamlit con CTRL+C.
+2. Mantieni la cartella .venv.
+3. Elimina app.py e l'intera cartella modules dalla cartella PAS.
+4. Copia app.py e l'intera cartella modules di questa versione.
+5. Avvia con:
+
+   .\.venv\Scripts\python.exe -m streamlit run app.py

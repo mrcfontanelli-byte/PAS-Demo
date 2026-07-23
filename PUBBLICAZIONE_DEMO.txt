@@ -1,0 +1,21 @@
+PAS DEMO v2.0.2 - PUBBLICAZIONE
+
+PASSWORD
+La password si trova nel file:
+
+modules/security.py
+
+Per cambiarla modifica:
+
+DEMO_PASSWORD = "PAS2026"
+
+PUBBLICAZIONE
+1. Carica la cartella del progetto in un repository GitHub.
+2. Collega il repository a Streamlit Community Cloud.
+3. Seleziona app.py come file principale.
+4. Avvia il deploy.
+5. Condividi il link e la password soltanto con la persona autorizzata.
+
+Nota:
+questa è una protezione semplice adatta a una demo privata.
+Non è un sistema completo di gestione utenti.
