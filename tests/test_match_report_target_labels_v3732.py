@@ -14,7 +14,7 @@ def test_match_report_target_labels_and_bar_centering():
     reporting = (ROOT / "modules" / "reporting.py").read_text(encoding="utf-8")
     version = (ROOT / "modules" / "version.py").read_text(encoding="utf-8")
 
-    assert 'APP_BUILD_VERSION = "3.7.42"' in version
+    assert 'APP_BUILD_VERSION = "3.7.43"' in version
     assert "target_label_y = bar_y + 0.45" in reporting
     assert "target_label_right" in reporting
     assert "value_center_x = cell_l + max(0.0, bw) / 2" in reporting

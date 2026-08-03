@@ -1,3 +1,13 @@
+## Versione 3.7.43
+
+### Dettaglio Team Sessions GPExe
+- Aggiunto il comando **Sincronizza dettagli Team Sessions GPExe**.
+- Importazione da `GET /rest/v2/session/team/{id}/?all_params=true`.
+- Normalizzazione dinamica delle metriche tramite gli header restituiti da GPExe, senza indici fissi.
+- Salvataggio separato di dettaglio sessione, intestazioni metriche e righe atleta nel database PAS Connect.
+- Sincronizzazione limitata alle Team Sessions ancora prive di dettaglio, con log degli errori per sessione.
+- Excel resta la sorgente dati operativa; Dashboard, analisi e report restano invariati.
+
 ## Versione 3.7.42
 
 ### Sincronizzazione Team Sessions GPExe

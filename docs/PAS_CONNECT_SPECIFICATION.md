@@ -38,3 +38,7 @@ persistenza SQL, sincronizzazione reale e uso dei dati GPExe nell'app.
 Le anagrafiche normalizzate sono scritte nel database SQLite PAS Connect tramite
 transazione e upsert. Token e password non vengono mai persistiti. L'Excel
 operativo non viene aperto né modificato dalla sincronizzazione GPExe.
+
+
+## v3.7.43 — Team Session Detail
+Il connettore usa `/rest/v2/session/team/{id}/?all_params=true` per importare dettagli, header dinamici e righe atleta senza assumere posizioni fisse delle metriche.

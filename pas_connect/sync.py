@@ -7,8 +7,8 @@ from enum import Enum
 from typing import Any, Callable, Mapping
 
 from .client import GPExeClient
-from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, TEAM_SESSIONS, Endpoint
-from .mapper import map_athlete, map_category, map_many, map_tag, map_team, map_team_session
+from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, TEAM_SESSIONS, TEAM_SESSION_DETAIL, Endpoint
+from .mapper import map_athlete, map_category, map_many, map_tag, map_team, map_team_session, map_team_session_detail
 
 
 class SyncResource(str, Enum):
@@ -146,4 +146,39 @@ def sync_team_sessions(client: GPExeClient, *, updated_since: str | None = None)
         "updated_since": updated_since,
         "sessions": sessions,
         "count": len(sessions),
+    }
+
+
+def sync_team_session_details(
+    client: GPExeClient,
+    session_ids: list[int],
+    *,
+    all_params: bool = True,
+    export_template: int | None = None,
+) -> dict[str, Any]:
+    """Scarica e normalizza il dettaglio delle Team Sessions indicate."""
+    details: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for session_id in session_ids:
+        query: dict[str, Any] = {"all_params": str(bool(all_params)).lower()}
+        if export_template is not None:
+            query["export_template"] = export_template
+        try:
+            payload = client.request(
+                TEAM_SESSION_DETAIL,
+                path_values={"id": int(session_id)},
+                query=query,
+            )
+            details.append(map_team_session_detail(payload, provider_session_id=int(session_id)))
+        except Exception as exc:
+            errors.append({"provider_session_id": int(session_id), "error": str(exc)})
+    return {
+        "schema_version": 3,
+        "provider": "gpexe",
+        "resource": "team_session_details",
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+        "details": details,
+        "errors": errors,
+        "received": len(details),
+        "failed": len(errors),
     }

@@ -62,3 +62,9 @@ cloud esterno mantenendo lo stesso schema logico.
 La tabella `gpexe_team_sessions` conserva i metadati delle Team Sessions importate da GPExe. La chiave stabile è `provider_session_id`. Sono memorizzati team, categoria, nome, timestamp, durata, stato, validità statistiche, presenza drill, timestamp di creazione/aggiornamento provider e payload normalizzato.
 
 Questa tabella è ancora isolata dal PAS Core: Excel resta la sorgente operativa delle analisi.
+
+
+## Tabelle dettaglio Team Session
+- `gpexe_team_session_details`: metadati e raw JSON del dettaglio.
+- `gpexe_session_metric_headers`: ordine, label e unità delle metriche restituite.
+- `gpexe_session_athlete_rows`: righe atleta con metriche normalizzate in JSON.

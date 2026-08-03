@@ -25,3 +25,7 @@ zone velocità/accelerazione/decelerazione/cardio/potenza.
 
 Le metriche a soglia (es. 19.8–25.2 km/h e >25.2 km/h) saranno derivate dalle
 speed zones dopo verifica sulle soglie reali dell'istanza GPExe.
+
+
+## Team Session detail
+`table_data.headers` definisce dinamicamente la corrispondenza delle posizioni in `athlete_sessions[].values`; il PAS non usa indici hard-coded.

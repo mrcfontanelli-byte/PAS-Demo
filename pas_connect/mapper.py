@@ -134,6 +134,62 @@ def parse_headers_table(table_data: Mapping[str, Any]) -> list[dict[str, Any]]:
     return normalized
 
 
+
+def map_team_session_detail(payload: Mapping[str, Any], *, provider_session_id: int) -> dict[str, Any]:
+    """Normalizza il dettaglio Team Session mantenendo header dinamici e righe atleta."""
+    if not isinstance(payload, Mapping):
+        raise MappingError("Dettaglio Team Session GPExe non valido.")
+    general = payload.get("general") if isinstance(payload.get("general"), Mapping) else {}
+    header = payload.get("header") if isinstance(payload.get("header"), Mapping) else {}
+    table_data = payload.get("table_data") if isinstance(payload.get("table_data"), Mapping) else {}
+    timing = payload.get("timing") if isinstance(payload.get("timing"), Mapping) else {}
+    status = payload.get("status") if isinstance(payload.get("status"), Mapping) else {}
+    counts = payload.get("counts") if isinstance(payload.get("counts"), Mapping) else {}
+    category = payload.get("category") if isinstance(payload.get("category"), Mapping) else {}
+    drill = payload.get("drill") if isinstance(payload.get("drill"), Mapping) else {}
+
+    headers = table_data.get("headers") if isinstance(table_data.get("headers"), list) else []
+    normalized_headers = []
+    for index, item in enumerate(headers):
+        if not isinstance(item, Mapping):
+            continue
+        label = str(item.get("label") or item.get("name") or "").strip()
+        if not label:
+            continue
+        normalized_headers.append({
+            "position": index,
+            "label": label,
+            "unit": item.get("unit"),
+            "raw": dict(item),
+        })
+
+    athlete_rows = parse_headers_table(table_data) if headers else []
+    return {
+        "provider": "gpexe",
+        "provider_session_id": int(provider_session_id),
+        "provider_general_id": general.get("id"),
+        "team_id": general.get("team") or header.get("team"),
+        "nature": general.get("nature"),
+        "start_timestamp": header.get("start_timestamp") or timing.get("start_timestamp"),
+        "category_id": category.get("id") or header.get("category_id"),
+        "category_name": category.get("name") or header.get("category"),
+        "athlete_count": header.get("athletes"),
+        "total_time": header.get("total_time") or timing.get("total_time"),
+        "notes": header.get("notes"),
+        "weather": header.get("weather"),
+        "match": header.get("match"),
+        "cycle": header.get("cycle"),
+        "tags": header.get("tags") if isinstance(header.get("tags"), list) else [],
+        "drills": header.get("drills") if isinstance(header.get("drills"), list) else [],
+        "drill": dict(drill),
+        "timing": dict(timing),
+        "status": dict(status),
+        "counts": dict(counts),
+        "headers": normalized_headers,
+        "athlete_rows": athlete_rows,
+        "raw": dict(payload),
+    }
+
 def parse_iso_datetime(value: object) -> datetime | None:
     if value in (None, ""):
         return None

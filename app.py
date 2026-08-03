@@ -59,7 +59,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeConfig, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions
+from pas_connect import GPExeClient, GPExeConfig, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details
 from pas_connect.endpoints import TEAMS
 
 
@@ -3174,6 +3174,63 @@ with settings_column:
                         f" · aggiornate {last_session_sync.get('updated_count', 0)}"
                     )
                 st.caption(f"Team Sessions nel database PAS Connect: {stored_sessions}{details}")
+
+
+            st.divider()
+            st.markdown("##### Dettaglio Team Sessions")
+            st.caption(
+                "Scarica header, stato, timing, metriche dinamiche e righe atleta per le Team Sessions "
+                "già presenti nel database PAS Connect. Excel e analisi restano invariati."
+            )
+            if st.button(
+                "Sincronizza dettagli Team Sessions GPExe",
+                key="pas_gpexe_sync_team_session_details",
+                use_container_width=True,
+            ):
+                try:
+                    runtime_config = GPExeConfig(
+                        base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                        token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                        timeout_seconds=90.0,
+                        verify_tls=True,
+                    )
+                    runtime_config.validate(require_credentials=True)
+                    runtime_client = GPExeClient(runtime_config)
+                    detail_database = PASConnectDatabase.default()
+                    session_ids = detail_database.team_session_ids_for_detail_sync(only_missing=True)
+                    if not session_ids:
+                        st.info("Nessuna Team Session senza dettaglio da sincronizzare.")
+                    else:
+                        with st.spinner(f"Sincronizzazione dettaglio di {len(session_ids)} Team Sessions..."):
+                            detail_payload = sync_team_session_details(runtime_client, session_ids)
+                            detail_result = detail_database.upsert_team_session_details(detail_payload)
+                        st.success(
+                            "Dettagli Team Sessions sincronizzati: "
+                            f"{detail_result.received} sessioni · "
+                            f"{detail_result.inserted} nuove · "
+                            f"{detail_result.updated} aggiornate · "
+                            f"{detail_result.athlete_rows} righe atleta · "
+                            f"{detail_result.metric_headers} intestazioni metriche"
+                            + (f" · {detail_result.failed} errori" if detail_result.failed else "")
+                        )
+                except Exception as exc:
+                    st.error(f"Sincronizzazione dettagli Team Sessions non riuscita: {exc}")
+
+            try:
+                detail_database = PASConnectDatabase.default()
+                stored_details = detail_database.team_session_detail_count()
+                last_detail_sync = detail_database.last_team_session_detail_sync()
+            except Exception:
+                stored_details = 0
+                last_detail_sync = None
+            if stored_details:
+                detail_text = ""
+                if isinstance(last_detail_sync, dict):
+                    detail_text = (
+                        f" · ultima sync {last_detail_sync.get('completed_at', '')}"
+                        f" · errori {last_detail_sync.get('failed_count', 0)}"
+                    )
+                st.caption(f"Dettagli Team Sessions nel database PAS Connect: {stored_details}{detail_text}")
 
             if st.button(
                 "Disconnetti GPExe",

@@ -1,4 +1,4 @@
-## Versione 3.7.42
+## Versione 3.7.43
 
 ### Database PAS Connect per anagrafiche GPExe
 - La sincronizzazione Teams, Categories, Tags e Athletes scrive in `.pas_data/pas_connect.sqlite3`.
@@ -9,8 +9,8 @@
 
 ### PAS
 
-**Versione corrente: 3.7.42**
-La release 3.7.42 aggiunge la sincronizzazione incrementale delle Team Sessions GPExe nel database PAS Connect separato, con upsert e log di record nuovi/aggiornati. Excel resta la sorgente operativa e nessuna analisi usa ancora le sessioni GPExe.
+**Versione corrente: 3.7.43**
+La release 3.7.43 aggiunge la sincronizzazione incrementale delle Team Sessions GPExe nel database PAS Connect separato, con upsert e log di record nuovi/aggiornati. Excel resta la sorgente operativa e nessuna analisi usa ancora le sessioni GPExe.
 
 - Introdotto il package isolato `pas_connect/` con configurazione provider, catalogo endpoint GPExe, autenticazione token, client REST testabile, mapper iniziali e piano di sincronizzazione.
 - Excel resta la sorgente dati predefinita e operativa: nessuna sezione, analisi o interfaccia è stata modificata.
@@ -1909,3 +1909,8 @@ Esempi: `chi ha accumulato più Distance negli ultimi 2 cicli gara?`, `confronta
 - Selezione dei singoli grafici da includere.
 - Generazione e download PDF A4 orizzontale con massimo 4 grafici per pagina.
 - Conservazione di titoli, legende e annotazioni di significatività.
+
+
+### GPExe Team Session Details (v3.7.43)
+
+PAS Connect può ora scaricare il dettaglio delle Team Sessions già sincronizzate, includendo header, timing, stato, intestazioni metriche dinamiche e righe atleta. I dati vengono salvati esclusivamente in `.pas_data/pas_connect.sqlite3`; il database Excel e le analisi esistenti non vengono modificati.

@@ -38,3 +38,7 @@ persistenza cloud definitiva.
 3. Le risposte vengono normalizzate e salvate con upsert su `provider_session_id`.
 4. Il log registra record ricevuti, inseriti e aggiornati.
 5. Il database Excel e il PAS Core non vengono modificati.
+
+
+## Step dettaglio Team Sessions
+Dopo la lista Team Sessions, PAS Connect scarica solo i dettagli mancanti e registra eventuali errori per singola sessione.

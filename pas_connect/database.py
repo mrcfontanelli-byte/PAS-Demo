@@ -15,7 +15,7 @@ import sqlite3
 from typing import Any, Iterator, Mapping
 
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,19 @@ class SessionImportResult:
     received: int
     inserted: int
     updated: int
+    sync_run_id: int
+
+
+@dataclass(frozen=True)
+class SessionDetailImportResult:
+    database_path: Path
+    synced_at: str
+    received: int
+    inserted: int
+    updated: int
+    athlete_rows: int
+    metric_headers: int
+    failed: int
     sync_run_id: int
 
 
@@ -131,6 +144,47 @@ class PASConnectDatabase:
                     raw_json TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS gpexe_team_session_details (
+                    provider_session_id INTEGER PRIMARY KEY,
+                    provider_general_id INTEGER,
+                    team_id INTEGER,
+                    nature TEXT,
+                    start_timestamp TEXT,
+                    category_id INTEGER,
+                    category_name TEXT,
+                    athlete_count INTEGER,
+                    total_time TEXT,
+                    notes TEXT,
+                    provider_updated_at TEXT,
+                    synced_at TEXT NOT NULL,
+                    raw_json TEXT NOT NULL,
+                    FOREIGN KEY(provider_session_id) REFERENCES gpexe_team_sessions(provider_session_id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS gpexe_session_metric_headers (
+                    provider_session_id INTEGER NOT NULL,
+                    position INTEGER NOT NULL,
+                    metric_label TEXT NOT NULL,
+                    metric_unit TEXT,
+                    raw_json TEXT NOT NULL,
+                    PRIMARY KEY(provider_session_id, position),
+                    FOREIGN KEY(provider_session_id) REFERENCES gpexe_team_sessions(provider_session_id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS gpexe_session_athlete_rows (
+                    provider_session_id INTEGER NOT NULL,
+                    provider_athlete_session_id INTEGER NOT NULL,
+                    athlete_first_name TEXT,
+                    athlete_last_name TEXT,
+                    athlete_role TEXT,
+                    state TEXT,
+                    metrics_json TEXT NOT NULL,
+                    raw_json TEXT NOT NULL,
+                    synced_at TEXT NOT NULL,
+                    PRIMARY KEY(provider_session_id, provider_athlete_session_id),
+                    FOREIGN KEY(provider_session_id) REFERENCES gpexe_team_sessions(provider_session_id) ON DELETE CASCADE
+                );
+
                 CREATE TABLE IF NOT EXISTS gpexe_sync_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     resource_group TEXT NOT NULL,
@@ -157,6 +211,10 @@ class PASConnectDatabase:
             if "updated_count" not in columns:
                 connection.execute(
                     "ALTER TABLE gpexe_sync_runs ADD COLUMN updated_count INTEGER NOT NULL DEFAULT 0"
+                )
+            if "failed_count" not in columns:
+                connection.execute(
+                    "ALTER TABLE gpexe_sync_runs ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0"
                 )
 
             connection.execute(
@@ -381,6 +439,132 @@ class PASConnectDatabase:
                 connection.commit()
                 raise
         return SessionImportResult(self.path, synced_at, len(sessions), inserted, updated, run_id)
+
+    def team_session_ids_for_detail_sync(self, *, only_missing: bool = True) -> list[int]:
+        if not self.path.is_file():
+            return []
+        self.initialize()
+        with self.connect() as connection:
+            if only_missing:
+                rows = connection.execute(
+                    """SELECT s.provider_session_id FROM gpexe_team_sessions s
+                    LEFT JOIN gpexe_team_session_details d
+                    ON d.provider_session_id=s.provider_session_id
+                    WHERE d.provider_session_id IS NULL
+                    ORDER BY s.start_timestamp, s.provider_session_id"""
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT provider_session_id FROM gpexe_team_sessions ORDER BY start_timestamp, provider_session_id"
+                ).fetchall()
+            return [int(row[0]) for row in rows]
+
+    def upsert_team_session_details(self, payload: Mapping[str, Any]) -> SessionDetailImportResult:
+        details = payload.get("details")
+        errors = payload.get("errors") or []
+        if not isinstance(details, list):
+            raise ValueError("Payload GPExe privo della lista details.")
+        synced_at = str(payload.get("synced_at") or datetime.now(timezone.utc).isoformat())
+        self.initialize()
+        inserted = updated = athlete_rows_count = metric_headers_count = 0
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO gpexe_sync_runs(resource_group, started_at, status) VALUES(?, ?, ?)",
+                ("team_session_details", synced_at, "running"),
+            )
+            run_id = int(cursor.lastrowid)
+            connection.commit()
+            try:
+                connection.execute("BEGIN")
+                for row in details:
+                    session_id = int(row["provider_session_id"])
+                    exists = connection.execute(
+                        "SELECT 1 FROM gpexe_team_session_details WHERE provider_session_id=?",
+                        (session_id,),
+                    ).fetchone() is not None
+                    timing = row.get("timing") if isinstance(row.get("timing"), Mapping) else {}
+                    connection.execute(
+                        """INSERT INTO gpexe_team_session_details(
+                        provider_session_id, provider_general_id, team_id, nature, start_timestamp,
+                        category_id, category_name, athlete_count, total_time, notes,
+                        provider_updated_at, synced_at, raw_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(provider_session_id) DO UPDATE SET
+                        provider_general_id=excluded.provider_general_id, team_id=excluded.team_id,
+                        nature=excluded.nature, start_timestamp=excluded.start_timestamp,
+                        category_id=excluded.category_id, category_name=excluded.category_name,
+                        athlete_count=excluded.athlete_count, total_time=excluded.total_time,
+                        notes=excluded.notes, provider_updated_at=excluded.provider_updated_at,
+                        synced_at=excluded.synced_at, raw_json=excluded.raw_json""",
+                        (session_id, row.get("provider_general_id"), row.get("team_id"), row.get("nature"),
+                         row.get("start_timestamp"), row.get("category_id"), row.get("category_name"),
+                         row.get("athlete_count"), row.get("total_time"), row.get("notes"),
+                         timing.get("updated_on"), synced_at, self._json(row.get("raw") or row)),
+                    )
+                    inserted += int(not exists); updated += int(exists)
+                    connection.execute("DELETE FROM gpexe_session_metric_headers WHERE provider_session_id=?", (session_id,))
+                    for header in row.get("headers") or []:
+                        connection.execute(
+                            """INSERT INTO gpexe_session_metric_headers(
+                            provider_session_id, position, metric_label, metric_unit, raw_json
+                            ) VALUES (?, ?, ?, ?, ?)""",
+                            (session_id, int(header["position"]), str(header["label"]),
+                             str(header.get("unit")) if header.get("unit") is not None else None,
+                             self._json(header.get("raw") or header)),
+                        )
+                        metric_headers_count += 1
+                    connection.execute("DELETE FROM gpexe_session_athlete_rows WHERE provider_session_id=?", (session_id,))
+                    for athlete_row in row.get("athlete_rows") or []:
+                        athlete_session_id = athlete_row.get("provider_athlete_session_id")
+                        if athlete_session_id is None:
+                            continue
+                        athlete = athlete_row.get("athlete") if isinstance(athlete_row.get("athlete"), Mapping) else {}
+                        connection.execute(
+                            """INSERT INTO gpexe_session_athlete_rows(
+                            provider_session_id, provider_athlete_session_id, athlete_first_name,
+                            athlete_last_name, athlete_role, state, metrics_json, raw_json, synced_at
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (session_id, int(athlete_session_id), athlete.get("first_name"), athlete.get("last_name"),
+                             athlete.get("role"), athlete_row.get("state"),
+                             json.dumps(athlete_row.get("metrics") or {}, ensure_ascii=False, default=str),
+                             self._json(athlete_row), synced_at),
+                        )
+                        athlete_rows_count += 1
+                completed_at = datetime.now(timezone.utc).isoformat()
+                connection.execute(
+                    """UPDATE gpexe_sync_runs SET completed_at=?, status='success',
+                    sessions_count=?, inserted_count=?, updated_count=?, failed_count=? WHERE id=?""",
+                    (completed_at, len(details), inserted, updated, len(errors), run_id),
+                )
+                connection.commit()
+            except Exception as exc:
+                connection.rollback()
+                connection.execute(
+                    "UPDATE gpexe_sync_runs SET completed_at=?, status='failed', error_message=? WHERE id=?",
+                    (datetime.now(timezone.utc).isoformat(), str(exc), run_id),
+                )
+                connection.commit()
+                raise
+        return SessionDetailImportResult(self.path, synced_at, len(details), inserted, updated,
+                                         athlete_rows_count, metric_headers_count, len(errors), run_id)
+
+    def team_session_detail_count(self) -> int:
+        if not self.path.is_file():
+            return 0
+        self.initialize()
+        with self.connect() as connection:
+            return int(connection.execute("SELECT COUNT(*) FROM gpexe_team_session_details").fetchone()[0])
+
+    def last_team_session_detail_sync(self) -> dict[str, Any] | None:
+        if not self.path.is_file():
+            return None
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT * FROM gpexe_sync_runs WHERE resource_group='team_session_details'
+                AND status='success' ORDER BY id DESC LIMIT 1"""
+            ).fetchone()
+            return dict(row) if row is not None else None
 
     def latest_team_session_updated_at(self) -> str | None:
         if not self.path.is_file():
