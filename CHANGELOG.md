@@ -1,3 +1,12 @@
+## Versione 3.7.42
+
+### Sincronizzazione Team Sessions GPExe
+- Aggiunto il comando **Sincronizza Team Sessions GPExe** nel pannello PAS Connect.
+- Importazione da `GET /rest/v2/session/team/` con paginazione e filtro incrementale `updated_on_gte`.
+- Le Team Sessions vengono normalizzate e salvate tramite upsert nella tabella `gpexe_team_sessions`.
+- Il registro sincronizzazioni indica record ricevuti, nuovi e aggiornati.
+- Excel resta la sorgente dati operativa; Dashboard, analisi e report restano invariati.
+
 ## Versione 3.7.41
 
 ### Database PAS Connect per anagrafiche GPExe

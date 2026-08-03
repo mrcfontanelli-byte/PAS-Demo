@@ -15,7 +15,7 @@ import sqlite3
 from typing import Any, Iterator, Mapping
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -23,6 +23,16 @@ class ReferenceImportResult:
     database_path: Path
     synced_at: str
     counts: dict[str, int]
+    sync_run_id: int
+
+
+@dataclass(frozen=True)
+class SessionImportResult:
+    database_path: Path
+    synced_at: str
+    received: int
+    inserted: int
+    updated: int
     sync_run_id: int
 
 
@@ -102,6 +112,25 @@ class PASConnectDatabase:
                     raw_json TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS gpexe_team_sessions (
+                    provider_session_id INTEGER PRIMARY KEY,
+                    team_id INTEGER,
+                    category_id INTEGER,
+                    session_name TEXT NOT NULL,
+                    notes TEXT,
+                    start_timestamp TEXT,
+                    end_timestamp TEXT,
+                    total_time TEXT,
+                    is_stats_valid INTEGER NOT NULL DEFAULT 0,
+                    drill_enabled INTEGER NOT NULL DEFAULT 0,
+                    state TEXT,
+                    submitted_by TEXT,
+                    provider_created_at TEXT,
+                    provider_updated_at TEXT,
+                    synced_at TEXT NOT NULL,
+                    raw_json TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS gpexe_sync_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     resource_group TEXT NOT NULL,
@@ -116,6 +145,20 @@ class PASConnectDatabase:
                 );
                 """
             )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(gpexe_sync_runs)")}
+            if "sessions_count" not in columns:
+                connection.execute(
+                    "ALTER TABLE gpexe_sync_runs ADD COLUMN sessions_count INTEGER NOT NULL DEFAULT 0"
+                )
+            if "inserted_count" not in columns:
+                connection.execute(
+                    "ALTER TABLE gpexe_sync_runs ADD COLUMN inserted_count INTEGER NOT NULL DEFAULT 0"
+                )
+            if "updated_count" not in columns:
+                connection.execute(
+                    "ALTER TABLE gpexe_sync_runs ADD COLUMN updated_count INTEGER NOT NULL DEFAULT 0"
+                )
+
             connection.execute(
                 "INSERT INTO pas_connect_meta(key, value) VALUES('schema_version', ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
@@ -269,6 +312,103 @@ class PASConnectDatabase:
                 raise
 
         return ReferenceImportResult(self.path, synced_at, counts, run_id)
+
+    def upsert_team_sessions(self, payload: Mapping[str, Any]) -> SessionImportResult:
+        sessions = payload.get("sessions")
+        if not isinstance(sessions, list):
+            raise ValueError("Payload GPExe privo della lista sessions.")
+        synced_at = str(payload.get("synced_at") or datetime.now(timezone.utc).isoformat())
+        self.initialize()
+        inserted = 0
+        updated = 0
+        with self.connect() as connection:
+            cursor = connection.execute(
+                "INSERT INTO gpexe_sync_runs(resource_group, started_at, status) VALUES(?, ?, ?)",
+                ("team_sessions", synced_at, "running"),
+            )
+            run_id = int(cursor.lastrowid)
+            connection.commit()
+            try:
+                connection.execute("BEGIN")
+                for row in sessions:
+                    session_id = int(row["provider_session_id"])
+                    exists = connection.execute(
+                        "SELECT 1 FROM gpexe_team_sessions WHERE provider_session_id=?",
+                        (session_id,),
+                    ).fetchone() is not None
+                    connection.execute(
+                        """
+                        INSERT INTO gpexe_team_sessions(
+                            provider_session_id, team_id, category_id, session_name, notes,
+                            start_timestamp, end_timestamp, total_time, is_stats_valid,
+                            drill_enabled, state, submitted_by, provider_created_at,
+                            provider_updated_at, synced_at, raw_json
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(provider_session_id) DO UPDATE SET
+                            team_id=excluded.team_id, category_id=excluded.category_id,
+                            session_name=excluded.session_name, notes=excluded.notes,
+                            start_timestamp=excluded.start_timestamp, end_timestamp=excluded.end_timestamp,
+                            total_time=excluded.total_time, is_stats_valid=excluded.is_stats_valid,
+                            drill_enabled=excluded.drill_enabled, state=excluded.state,
+                            submitted_by=excluded.submitted_by, provider_created_at=excluded.provider_created_at,
+                            provider_updated_at=excluded.provider_updated_at, synced_at=excluded.synced_at,
+                            raw_json=excluded.raw_json
+                        """,
+                        (
+                            session_id, row.get("team_id"), row.get("category_id"), row["session_name"],
+                            row.get("notes"), row.get("start_timestamp"), row.get("end_timestamp"),
+                            row.get("total_time"), int(bool(row.get("is_stats_valid"))),
+                            int(bool(row.get("drill_enabled"))), row.get("state"),
+                            str(row.get("submitted_by")) if row.get("submitted_by") is not None else None,
+                            row.get("created_at"), row.get("updated_at"), synced_at, self._json(row),
+                        ),
+                    )
+                    updated += int(exists)
+                    inserted += int(not exists)
+                completed_at = datetime.now(timezone.utc).isoformat()
+                connection.execute(
+                    """UPDATE gpexe_sync_runs SET completed_at=?, status='success',
+                    sessions_count=?, inserted_count=?, updated_count=? WHERE id=?""",
+                    (completed_at, len(sessions), inserted, updated, run_id),
+                )
+                connection.commit()
+            except Exception as exc:
+                connection.rollback()
+                connection.execute(
+                    "UPDATE gpexe_sync_runs SET completed_at=?, status='failed', error_message=? WHERE id=?",
+                    (datetime.now(timezone.utc).isoformat(), str(exc), run_id),
+                )
+                connection.commit()
+                raise
+        return SessionImportResult(self.path, synced_at, len(sessions), inserted, updated, run_id)
+
+    def latest_team_session_updated_at(self) -> str | None:
+        if not self.path.is_file():
+            return None
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT MAX(provider_updated_at) FROM gpexe_team_sessions"
+            ).fetchone()
+            return str(row[0]) if row and row[0] else None
+
+    def team_session_count(self) -> int:
+        if not self.path.is_file():
+            return 0
+        self.initialize()
+        with self.connect() as connection:
+            return int(connection.execute("SELECT COUNT(*) FROM gpexe_team_sessions").fetchone()[0])
+
+    def last_team_session_sync(self) -> dict[str, Any] | None:
+        if not self.path.is_file():
+            return None
+        self.initialize()
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT * FROM gpexe_sync_runs WHERE resource_group='team_sessions'
+                AND status='success' ORDER BY id DESC LIMIT 1"""
+            ).fetchone()
+            return dict(row) if row is not None else None
 
     def counts(self) -> dict[str, int]:
         if not self.path.is_file():

@@ -30,3 +30,11 @@ chiavi di upsert e ogni esecuzione viene registrata in `gpexe_sync_runs`.
 La sorgente operativa del PAS resta Excel. Il file locale è adatto a sviluppo e
 verifica; su Streamlit Community Cloud è effimero e non rappresenta ancora la
 persistenza cloud definitiva.
+
+## Team Sessions incrementali (v3.7.42)
+
+1. Il connettore legge il maggiore `provider_updated_at` già presente nel database PAS Connect.
+2. Se disponibile, invia `updated_on_gte` a `GET /rest/v2/session/team/`.
+3. Le risposte vengono normalizzate e salvate con upsert su `provider_session_id`.
+4. Il log registra record ricevuti, inseriti e aggiornati.
+5. Il database Excel e il PAS Core non vengono modificati.

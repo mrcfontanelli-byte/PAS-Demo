@@ -59,7 +59,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeConfig, PASConnectDatabase, SnapshotStore, sync_reference_data
+from pas_connect import GPExeClient, GPExeConfig, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions
 from pas_connect.endpoints import TEAMS
 
 
@@ -3121,6 +3121,59 @@ with settings_column:
                     "ricreato dopo reboot o nuovo deploy. La persistenza cloud sarà introdotta "
                     "in una fase successiva."
                 )
+
+            st.divider()
+            st.markdown("##### Team Sessions")
+            st.caption(
+                "Scarica le Team Sessions GPExe nel database PAS Connect separato. "
+                "Dashboard, report e database Excel restano invariati."
+            )
+            if st.button(
+                "Sincronizza Team Sessions GPExe",
+                key="pas_gpexe_sync_team_sessions",
+                use_container_width=True,
+            ):
+                try:
+                    runtime_config = GPExeConfig(
+                        base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                        token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                        timeout_seconds=60.0,
+                        verify_tls=True,
+                    )
+                    runtime_config.validate(require_credentials=True)
+                    runtime_client = GPExeClient(runtime_config)
+                    session_database = PASConnectDatabase.default()
+                    updated_since = session_database.latest_team_session_updated_at()
+                    with st.spinner("Sincronizzazione Team Sessions GPExe in corso..."):
+                        session_payload = sync_team_sessions(
+                            runtime_client, updated_since=updated_since
+                        )
+                        session_result = session_database.upsert_team_sessions(session_payload)
+                    st.success(
+                        "Team Sessions sincronizzate: "
+                        f"{session_result.received} ricevute · "
+                        f"{session_result.inserted} nuove · "
+                        f"{session_result.updated} aggiornate."
+                    )
+                except Exception as exc:
+                    st.error(f"Sincronizzazione Team Sessions non riuscita: {exc}")
+
+            try:
+                session_database = PASConnectDatabase.default()
+                stored_sessions = session_database.team_session_count()
+                last_session_sync = session_database.last_team_session_sync()
+            except Exception:
+                stored_sessions = 0
+                last_session_sync = None
+            if stored_sessions:
+                details = ""
+                if isinstance(last_session_sync, dict):
+                    details = (
+                        f" · ultima sync {last_session_sync.get('completed_at', '')}"
+                        f" · nuove {last_session_sync.get('inserted_count', 0)}"
+                        f" · aggiornate {last_session_sync.get('updated_count', 0)}"
+                    )
+                st.caption(f"Team Sessions nel database PAS Connect: {stored_sessions}{details}")
 
             if st.button(
                 "Disconnetti GPExe",

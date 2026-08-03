@@ -7,8 +7,8 @@ from enum import Enum
 from typing import Any, Callable, Mapping
 
 from .client import GPExeClient
-from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, Endpoint
-from .mapper import map_athlete, map_category, map_many, map_tag, map_team
+from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, TEAM_SESSIONS, Endpoint
+from .mapper import map_athlete, map_category, map_many, map_tag, map_team, map_team_session
 
 
 class SyncResource(str, Enum):
@@ -74,11 +74,15 @@ def fetch_all_pages(
     *,
     page_size: int = 100,
     max_pages: int = 1000,
+    extra_query: Mapping[str, Any] | None = None,
 ) -> list[Mapping[str, Any]]:
     """Recupera endpoint lista, supportando sia array semplici sia risposte paginate."""
     collected: list[Mapping[str, Any]] = []
     for page in range(1, max_pages + 1):
-        payload = client.request(endpoint, query={"page": page, "page_size": page_size})
+        query = {"page": page, "page_size": page_size}
+        if extra_query:
+            query.update(dict(extra_query))
+        payload = client.request(endpoint, query=query)
         rows, total = _rows_from_response(payload)
         collected.extend(rows)
         if isinstance(payload, list):
@@ -122,3 +126,24 @@ def sync_reference_data(client: GPExeClient) -> dict[str, Any]:
         name: len(rows) for name, rows in snapshot["resources"].items()
     }
     return snapshot
+
+
+def sync_team_sessions(client: GPExeClient, *, updated_since: str | None = None) -> dict[str, Any]:
+    """Scarica le Team Sessions e le normalizza senza modificare il database Excel."""
+    query: dict[str, Any] = {"limit": 999}
+    if updated_since:
+        query["updated_on_gte"] = updated_since
+    raw_sessions = fetch_all_pages(
+        client, TEAM_SESSIONS, page_size=999, extra_query=query
+    )
+    sessions = map_many(raw_sessions, map_team_session)
+    synced_at = datetime.now(timezone.utc).isoformat()
+    return {
+        "schema_version": 2,
+        "provider": "gpexe",
+        "resource": "team_sessions",
+        "synced_at": synced_at,
+        "updated_since": updated_since,
+        "sessions": sessions,
+        "count": len(sessions),
+    }

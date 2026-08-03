@@ -56,3 +56,9 @@ aggiornano i record con upsert, senza duplicarli. Questo database non sostituisc
 Su Streamlit Community Cloud il filesystem è effimero: il file SQLite può essere
 ricreato dopo reboot o deploy. La persistenza definitiva richiederà un database
 cloud esterno mantenendo lo stesso schema logico.
+
+## Team Sessions GPExe (v3.7.42)
+
+La tabella `gpexe_team_sessions` conserva i metadati delle Team Sessions importate da GPExe. La chiave stabile è `provider_session_id`. Sono memorizzati team, categoria, nome, timestamp, durata, stato, validità statistiche, presenza drill, timestamp di creazione/aggiornamento provider e payload normalizzato.
+
+Questa tabella è ancora isolata dal PAS Core: Excel resta la sorgente operativa delle analisi.

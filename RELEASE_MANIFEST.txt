@@ -1,5 +1,5 @@
 PAS RELEASE MANIFEST
-Version: 3.7.41
+Version: 3.7.42
 
 c1c156bda4e6e95eb375559b8bbb8715e693f914851bf7da32adaf9ea1256ad7	173	.gitignore
 3ed731b65d06150c138e2dadb0be0697550888a6b47eb8c45ecc9adba8b8e9bd	37	.pytest_cache/.gitignore

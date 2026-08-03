@@ -8,8 +8,8 @@ non verrà attivata esplicitamente in una release successiva.
 from .config import DataProvider, GPExeConfig, PASConnectConfig
 from .client import GPExeClient
 from .storage import SnapshotStore
-from .database import PASConnectDatabase, ReferenceImportResult
-from .sync import sync_reference_data
+from .database import PASConnectDatabase, ReferenceImportResult, SessionImportResult
+from .sync import sync_reference_data, sync_team_sessions
 from .sync import SyncPlan, build_default_sync_plan
 
 __all__ = [
@@ -20,7 +20,9 @@ __all__ = [
     "SnapshotStore",
     "PASConnectDatabase",
     "ReferenceImportResult",
+    "SessionImportResult",
     "sync_reference_data",
+    "sync_team_sessions",
     "SyncPlan",
     "build_default_sync_plan",
 ]

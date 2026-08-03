@@ -73,6 +73,28 @@ def map_tag(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+
+def map_team_session(payload: Mapping[str, Any]) -> dict[str, Any]:
+    session_id = int(_required(payload, "id"))
+    return {
+        "provider": "gpexe",
+        "provider_session_id": session_id,
+        "team_id": payload.get("team"),
+        "category_id": payload.get("category"),
+        "session_name": str(payload.get("name") or "").strip() or f"GPExe Session {session_id}",
+        "notes": payload.get("notes"),
+        "start_timestamp": payload.get("start_timestamp"),
+        "end_timestamp": payload.get("end_timestamp"),
+        "total_time": payload.get("total_time"),
+        "is_stats_valid": bool(payload.get("is_stats_valid", False)),
+        "drill_enabled": bool(payload.get("drill_enabled", False)),
+        "state": payload.get("state"),
+        "submitted_by": payload.get("submitted_by"),
+        "created_at": payload.get("created_on"),
+        "updated_at": payload.get("updated_on"),
+        "tags": payload.get("tags") if isinstance(payload.get("tags"), list) else [],
+    }
+
 def parse_headers_table(table_data: Mapping[str, Any]) -> list[dict[str, Any]]:
     """Converte gli array posizionali GPExe usando le intestazioni restituite.
 
