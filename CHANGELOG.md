@@ -1,0 +1,681 @@
+## [3.7.35] - 2026-08-03
+
+### Corretto
+- Match Report: stemmi resi visibili su badge chiaro ad alto contrasto, inclusi loghi scuri.
+- Match Report: parsing dell’avversario compatibile con le etichette reali della Match Analysis.
+- Match Report: limite massimo della scala posizionato vicino al maggiore tra valore reale e target, con margine del 5% dell’intervallo utile.
+- Invariati calcoli, target e database.
+
+## [3.7.34] - 2026-08-03
+
+### Changed
+- Match Report: scala minima 80 per Relative Distance e 5 per MPE REC AVG TIME.
+- Match Report: valore e target individuale sono rappresentati sulla stessa scala con minimo specifico per metrica.
+- Match Report: rinominato MATCH TOTAL in TOTAL MATCH.
+- Match Report: barre TOTAL MATCH sempre piene e valori più grandi.
+
+## [3.7.33] - 2026-08-03
+
+### Modificato
+- Match Report: la scala delle barre include sia il valore reale sia il target individuale, con origine a zero e margine finale del 10%, rendendo proporzionale la distanza grafica tra valore e target.
+- L’etichetta numerica del target segue la stessa scala della linea target.
+- `MPE REC AVG TIME` è visualizzato con 0 decimali sia nel valore principale sia nell’etichetta del target.
+- Invariati calcoli del modello prestativo, dati e altre sezioni del PAS.
+
+## [3.7.32] - 2026-08-03
+
+### Modificato
+- Match Report: il valore della metrica è centrato nella barra colorata.
+- Match Report: aggiunta una piccola etichetta con il valore del target individuale alla base e a sinistra della linea target.
+- Invariati calcoli, dati e altre sezioni del PAS.
+
+## [3.7.31] - 2026-08-02
+
+### Corretto
+- Corretto il selettore giocatori della Match Analysis: ogni partita usa una chiave Streamlit dedicata e preseleziona tutti i giocatori disponibili, evitando che rimangano soltanto 7–10 atleti della selezione precedente.
+- La Match Analysis legge tutte le righe valide con `Drill = Match`, senza applicare la rosa statica come filtro obbligatorio.
+- Mantenuta l'esclusione di `Team Average` e invariata la logica dei Match Total.
+- Nessuna modifica al database.
+
+## [3.7.30] - 2026-08-02
+
+### Modificato
+- Ridisegnata l’intestazione del Match Report con titolo **MATCH REPORT**, stemmi delle squadre e separatore **VS**.
+- Applicato l’ordine casa/trasferta: Hellas Verona per primo nelle gare `(H)`, avversario per primo nelle gare `(A)`.
+- Aggiunti gli stemmi degli avversari forniti nella cartella `assets/teams`.
+- Gestiti alias dei nomi squadra e fallback testuale quando uno stemma non è disponibile.
+- Nessuna modifica alle metriche, ai dati o alle altre funzionalità.
+
+## [3.7.29] - 2026-08-02
+
+### Modificato
+- Impostata a **0 decimali** la visualizzazione di Relative Distance nei report PDF tabellari.
+- Aggiunta nel Match Report la percentuale di Max Speed sotto al valore assoluto, usando la Max Speed storica individuale come riferimento e lo stesso layout del Session Report.
+- Nessuna modifica ai dati, alle formule delle metriche o alle funzionalità non richieste.
+
+## [3.7.28] - 2026-08-02
+
+### Modificato
+- Rimossa dalle card della Dashboard la dicitura **“Confronto giocatori del giorno”**.
+- Aumentata l’opacità delle barre colorate nei report PDF tabellari, in particolare Session Report, Period Load Report e Match Report.
+- Mantenuta invariata la palette PAS: sono stati modificati soltanto intensità e contrasto in stampa.
+- Nessuna modifica a calcoli, filtri o database.
+
+## [3.7.27] - 2026-08-02
+
+### Modificato
+- Ridisegnata graficamente la Dashboard senza modificare logica e dati.
+- Migliorata la gerarchia delle card metriche e organizzate Media, Mediana, SD e CV in micro-box dedicati.
+- Resi più compatti badge di stato, riferimento omologo e accumulo.
+- Aggiunta una hero compatta alla Panoramica del giorno.
+- Alleggerito lo stile dei box plot visualizzati nella Dashboard.
+- Mantenuto invariato lo stile dei grafici usati nei report PDF.
+- Nessuna modifica al database.
+
+## [3.7.26] - 2026-08-02
+
+### Corretto
+- Allineate Media, Mediana, SD e CV delle card Dashboard alla stessa baseline usata per lo scostamento.
+- Le statistiche utilizzano soltanto sedute omologhe precedenti con stesso Match Day relativo e stessa Length Cycle.
+- Escluso il giorno selezionato dal campione storico.
+- Eliminata l'incoerenza tra scostamento e statistiche calcolate su popolazioni differenti.
+- In assenza di osservazioni omologhe valide non viene applicato alcun fallback silenzioso su altri periodi.
+- Nessuna modifica al database.
+
+## [3.7.25] - 2026-07-31
+
+### Modificato
+- Assegnato un colore distinto a ciascun drill nei box plot della pagina **Drills**.
+- Introdotta una palette fissa di dieci colori ad alto contrasto, coerente sul tema scuro PAS.
+- Resi coerenti con il colore del drill il riempimento, il bordo, i punti, gli outlier e la legenda.
+- Mantenuta la stessa associazione drill-colore per tutte le metriche della stessa selezione e per l'esportazione report.
+- Limitata a dieci la selezione simultanea dei drill.
+- Nessuna modifica al database.
+
+## [3.7.24] - 2026-07-30
+
+### Corretto
+- Ripristinata la popolazione del selettore **Drills** usando i nomi reali del foglio `Esercitazioni`, ordinati per frequenza.
+- Rimossa dalla pagina Drills la sezione non pertinente **Player drill coverage** e i relativi controlli di soglia/inclusione.
+- Aggiunto un messaggio esplicito quando nessun drill è disponibile con i filtri correnti.
+
+### Modificato
+- Aggiornato il placeholder di **PAS Intelligence** in **“Cosa vuoi analizzare?”**.
+- Aggiornata la chiave del selettore Drills per evitare il riuso di uno stato Streamlit incompatibile con la nuova lista.
+- Nessuna modifica al database.
+
+## [3.7.23] - 2026-07-30
+
+### Modificato
+- Reso obbligatorio il confronto con sedute omologhe nella Panoramica del giorno: stesso Match Day relativo e stessa Length Cycle.
+- Aggiunta nelle card la micro-etichetta `vs media omologa · n=X`, con il numero di giornate valide del riferimento.
+- Aggiunto un tooltip compatto con Match Day e Length Cycle usati per il confronto.
+- Rimossa l'opzione che consentiva di disattivare il filtro per Length Cycle, evitando benchmark non omogenei.
+- Nessuna modifica al database o alle altre sezioni.
+
+## [3.7.22] - 2026-07-30
+
+### Corretto
+- Eliminato il taglio dell’header PAS causato dal padding superiore troppo ridotto.
+- Portato il padding superiore del contenitore principale da `1rem` a `3.5rem`, mantenendo un layout compatto e compatibile con la toolbar di Streamlit Cloud.
+- Funzionalità, dati e struttura della pagina invariati.
+
+## [3.7.21] - 2026-07-30
+
+### Modificato
+- Ridotto a `1rem` il padding superiore del contenitore principale Streamlit.
+- Avvicinato l’header PAS alla toolbar nativa, eliminando gran parte dello spazio vuoto superiore.
+- Mantenuti invariati toolbar, navigazione, sidebar, dati e logiche applicative.
+
+## [3.7.20] - 2026-07-30
+
+### Modificato
+- Affiancati **Database** e **Settings** sulla stessa riga della sidebar tramite due pannelli popover compatti.
+- Eliminato l'ingombro verticale generato dai due expander separati.
+- Spostato nella sidebar il selettore della vista **Match Analysis**.
+- Spostati nella sidebar i controlli di partita, giocatori e metriche della vista **Singola partita**.
+- Spostati nella sidebar partite, soggetto e metriche della vista **Confronto / Totali partite**.
+- Rimossi i tab di Match Analysis dalla pagina, lasciando nel contenuto principale solo risultati, grafici, tabelle e report.
+- Logiche di calcolo, report e database invariate.
+
+## [3.7.19] - 2026-07-30
+
+### Modificato
+- Spostato **Esci dalla Demo** nel pannello compatto **⚙️ Settings** della sidebar.
+- Rimossa l’azione Esci dalla vista principale.
+- Aggiunte nel pannello Settings le informazioni essenziali su versione e database attivo.
+
+# Changelog
+
+## 3.7.18
+
+- Ridotta l’area occupata dal pannello Database nella sidebar.
+- Eliminato il riepilogo duplicato e mantenuta una sola riga compatta con nome file e ultimo aggiornamento.
+- Ridotto il logo nella sidebar e compattata l’intestazione PAS.
+- Sostituito il pulsante a tutta larghezza “Esci dalla Demo” con il comando compatto “Esci” in fondo alla sidebar.
+- PAS Intelligence è ora chiuso per impostazione predefinita e si apre con un click tramite pannello espandibile.
+- Motore PAS Intelligence, dati e funzionalità delle sezioni invariati.
+- Database invariato.
+
+## 3.7.17
+
+- Spostata la navigazione principale dalla sidebar alla parte superiore dell’app.
+- Le sezioni sono ora disposte orizzontalmente e vanno automaticamente a capo su schermi più stretti.
+- La sidebar resta disponibile esclusivamente per database, filtri e controlli contestuali.
+- Mantenuta invariata la logica interna di tutte le pagine.
+- Database invariato.
+
+## 3.7.16
+
+- Fix: errore `TypeError` nelle Visualizzazioni con più Match Cycle.
+- `test_by_level` viene ora gestito correttamente come lista di confronti pairwise.
+- Annotazioni di significatività e Performance Score compatibili con due o più gruppi.
+- Database invariato.
+
+## 3.7.15
+- Corretto il problema per cui la funzione PDF esisteva nel backend ma non era accessibile nella pagina Performance Research.
+- Aggiunta la sezione visibile “Stampa grafici” nella scheda Visualizzazioni.
+- Aggiunti selettore dei grafici, titolo report, pulsante di generazione e download/stampa PDF.
+- Confermato il limite di massimo quattro grafici per pagina.
+
+## v3.7.14
+
+### Aggiunto
+- Manifest di release con inventario e checksum SHA-256 dei file distribuiti.
+- Test automatico della paginazione PDF con cinque grafici.
+
+### Verifica
+- Confermato il limite massimo di quattro grafici per pagina.
+- Confermata la presenza di tutti i 14 file Python sorgente.
+- Esclusi dall'archivio i soli file temporanei `__pycache__`, non necessari all'esecuzione.
+- Database incluso invariato.
+
+## v3.7.13
+
+- Aggiunta impaginazione multipagina dei report grafici PDF, pronta per la stampa.
+- Limitati i grafici a un massimo di quattro per pagina A4 orizzontale.
+- Implementati layout automatici: uno a tutta pagina, due affiancati, tre o quattro in griglia 2 x 2.
+- Mantenute legende e annotazioni di significatività nei grafici esportati.
+- Aggiunti numero di pagina e totale grafici nel piè di pagina.
+- Database e funzionalità non richieste invariati.
+
+## v3.7.12
+
+- Aggiunte annotazioni di significatività nei grafici con parentesi e legenda scientifica (`ns`, `*`, `**`, `***`, `****`).
+- Aggiunti confronti post-hoc pairwise per fattori con più di due livelli, eseguiti dopo un test globale significativo e corretti con metodo Holm.
+- Supportati risultati differenziati tra coppie, ad esempio A–B significativo e A–C non significativo.
+- Esplicitati nella Performance Interpretation i gruppi tra cui emerge la differenza, anche nel caso di soli due gruppi come S e NS.
+- Aggiunta la direzione della differenza tramite confronto delle medie dei due gruppi.
+- Database e funzionalità non richieste invariati.
+
+## v3.7.11
+
+- Ripristinato nella pagina Drills, modalità Players, il controllo di copertura per giocatore.
+- Aggiunti conteggi basati su giornate uniche per Active Recovery, Individual Training, Return to Play, Full Training, Match e Different Training.
+- Aggiunta una soglia minima indipendente per ciascuna delle sei categorie.
+- Ripristinata la tabella modificabile con checkbox Include per includere o escludere manualmente ogni giocatore dai grafici.
+- Mantenuti esclusivamente i sei drill richiesti nei selettori.
+- Database e funzionalità non richieste invariati.
+
+## v3.7.10
+
+- Corretto anche il filtro Drill della Performance Research, che continuava a leggere l’intera tassonomia del database.
+- Limitati entrambi i selettori visibili (Performance Research e pagina Drills) alle sole categorie: Active Recovery, Individual Training, Return to Play, Full Training, Match e Different Training.
+- Aggiornate le chiavi Streamlit dei selettori per eliminare eventuali valori precedenti conservati nello stato della sessione.
+- Mantenuta la normalizzazione della variante `Different Traning` verso `Different Training`.
+- Database e funzionalità non richieste invariati.
+- Compilazione completa e validazione release eseguite.
+
+## v3.7.9
+
+- Limitato il selettore della sezione Drills alle sole categorie richieste: Active Recovery, Individual Training, Return to Play, Full Training, Match e Different Training.
+- Rimossi dal selettore Drills tutti gli altri valori presenti nella tassonomia del database.
+- Mantenuta la normalizzazione della variante `Different Traning` verso `Different Training`.
+- Database e funzionalità non richieste invariati.
+- Compilazione completa e validazione release eseguite.
+
+## v3.7.8
+
+- Esteso il selettore delle sedute nella Performance Research Match Cycle con Active Recovery, Individual Training e Return to Play.
+- Aggiunti nella tabella di copertura i conteggi delle giornate uniche per tutte e sei le categorie supportate.
+- Aggiunte soglie minime indipendenti per Active Recovery, Individual Training e Return to Play.
+- Il totale individuale giocatore-ciclo continua a sommare esclusivamente le categorie selezionate; le categorie non selezionate restano visibili nella tabella di controllo ma non entrano nel calcolo.
+- Database e funzionalità non richieste invariati.
+- Compilazione completa e validazione release eseguite.
+
+## v3.7.7
+
+- Aggiunto nella Performance Research Match Cycle il selettore delle sedute incluse: Full Training, Match e Different Training, anche in combinazione.
+- Il totale individuale giocatore-ciclo somma esclusivamente le categorie selezionate prima dell’analisi descrittiva o del Linear Mixed Model.
+- Aggiunta una tabella di controllo con conteggi di giornate uniche Full Training, Match e Different Training, totale sedute e numero di Match Cycle presenti per giocatore.
+- Aggiunta l’inclusione/esclusione manuale dei giocatori direttamente dalla tabella.
+- Aggiunte soglie minime indipendenti per Full Training, Match e Different Training.
+- Il Linear Mixed Model continua a usare il giocatore come random intercept e riceve una sola osservazione aggregata per giocatore, ciclo e livello del fattore selezionato.
+- Compilazione completa, validazione release e integrità del database verificate.
+
+## v3.7.6
+
+- Divisa l’analisi Match Cycle in confronto di un singolo ciclo e confronto di più cicli.
+- Introdotto un Linear Mixed Model per il confronto multiplo: `totale individuale ~ Match Cycle × fattore principale + (1 | Giocatore)`.
+- Il random intercept del giocatore gestisce misure ripetute, presenze variabili e dati non bilanciati tra i cicli.
+- Nel Trend LMM, asse X = Match Cycle e linee = livelli del fattore principale, con blu per S e arancione per NS.
+- Visualizzate medie marginali stimate, IC95% e numero di giocatori per ciclo/gruppo.
+- Aggiunta la dipendenza `statsmodels` compatibile con Streamlit Cloud.
+- Database e funzionalità non richieste invariati.
+
+## v3.7.5
+
+- Corretto il Trend delle medie quando Match Cycle è il secondo fattore: asse X = Match Cycle e linee = livelli del fattore principale.
+- Supportato un pannello non bilanciato: ogni ciclo utilizza i giocatori realmente presenti dopo l’applicazione dei filtri.
+- Confermata l’aggregazione giocatore-ciclo: somma delle giornate per atleta e successiva media dei totali individuali per gruppo.
+- Aggiunto al tooltip il numero di giocatori presenti per ciascun punto del Trend.
+- Mantenuti invariati database, filtri e funzionalità non richieste.
+
+## v3.7.4
+
+- Modificata la logica Match Cycle nella Performance Research: somma delle giornate per giocatore e ciclo, quindi media dei totali individuali separata tra S e NS.
+- Rimossi media e mediana delle singole giornate dal percorso Match Cycle.
+- Con più Match Cycle selezionati, asse X per ciclo e linee blu S / arancione NS.
+- Conservati tutti i filtri esistenti, inclusi ruolo e giocatori.
+- Database e funzionalità non richieste invariati.
+
+## v3.7.3
+
+- Hotfix delle barre di significatività nei raincloud: linee nere e simboli sempre visibili sopra ciascun confronto.
+- Colori fissi per gruppi nella Performance Research: Starters blu PAS, No Starters arancione PAS, indipendentemente dalla metrica.
+- Trend coerente con il fattore principale sull’asse X e con una linea per ciascun gruppo.
+- Linea Team resa opzionale e disattivata di default.
+- Totali allineati alla stessa codifica cromatica e ai marker di significatività.
+- Database invariato.
+
+## v3.7.2
+
+- Estesi i raincloud alle analisi a due fattori e ai confronti S/NS per Match Cycle.
+- Aggiunte barre scientifiche nere con `*`, `**`, `***` e `ns` direttamente sopra i gruppi.
+- Aggiunto il trend Starters / No Starters / Team con IC95%.
+- Aggiunti totali per ciclo configurabili come Media, Somma o Mediana per ogni metrica.
+- Aggiunto selettore per Distribuzione, Trend, Totali o vista completa.
+- Potenziata la Performance Interpretation e aggiunto il Performance Score per ciclo.
+- Database invariato.
+
+## v3.7.1
+
+- Ripristinati i raincloud plot nella Performance Research.
+- Aggiunto il trend dei gruppi nei diversi livelli del fattore principale, con supporto diretto a Starters/No Starters nei Match Cycle.
+- Aggiunti confronti automatici tra i livelli del secondo fattore all’interno di ogni ciclo.
+- Aggiunti marker di significatività `*`, `**`, `***` nei grafici.
+- Rafforzata visivamente la Performance Interpretation per i risultati significativi.
+- Database invariato.
+
+## 3.7.0
+
+- Riprogettata Statistical Analysis come Performance Research.
+- Introdotto il workflow Metriche → Fattori → Filtri → Analizza.
+- Aggiunto riconoscimento automatico del percorso statistico.
+- Aggiunti confronti automatici a due gruppi e multi-gruppo con effect size.
+- Aggiunta analisi multifattoriale esplorativa stratificata.
+- Limitato PAS Intelligence a Dashboard e Period Load.
+- Verificata l’esclusione delle percentuali del modello gara per Duration e RPE nel Period Load.
+- Mantenute le correzioni dei report S/NS e dei nomi giocatore completi.
+
+## v3.6.0
+
+- Aggiunta la pagina Statistical Analysis.
+- Aggiunti confronti tra due gruppi per giocatori, ruoli, S/NS, date e Match Cycle.
+- Aggiunte descrittive, Shapiro–Wilk, t-test/Welch, Mann–Whitney, effect size, raincloud plot, istogrammi, dati grezzi e correlazioni.
+- Aggiunta interpretazione PAS dei risultati statistici.
+- Period Load: rimossa la percentuale del modello gara esclusivamente per Duration e RPE.
+- Database invariato.
+
+## v3.5.6
+
+- Hotfix del grafico di dettaglio in Team Overview.
+- Corretto l’errore `AttributeError` nella formattazione della media squadra del giorno.
+- La media squadra della giornata continua a essere mostrata come rombo dedicato senza alterare box plot e distribuzione dei giocatori.
+- Nessuna modifica al database o alle altre funzionalità.
+
+## v3.5.5
+
+- Team Overview: conservato il box plot dello storico squadra e la distribuzione completa dei giocatori della giornata.
+- Aggiunto un indicatore dedicato alla media squadra della giornata nel grafico di dettaglio.
+- I giocatori selezionati vengono evidenziati senza nascondere gli altri valori della giornata.
+- Player Overview: conservato lo storico individuale e la distribuzione completa della squadra, con il giocatore della panoramica evidenziato.
+- Nessuna modifica al database o alle altre funzionalità.
+
+## v3.5.4
+
+- Corretto il collegamento tra **Giocatore della panoramica** e grafici di dettaglio.
+- Il giocatore selezionato nel Player Overview è ora evidenziato con pallino giallo più grande e nome.
+- Conservata la distribuzione completa di tutti i giocatori della giornata.
+- Nessuna modifica alle altre funzionalità.
+
+# Changelog
+
+## v3.5.3
+- Grafici di dettaglio: mantenuta la distribuzione completa della giornata e giocatore selezionato evidenziato con un pallino giallo più grande, bordo scuro e nome.
+- Period Load Report: una sola sigla S e una sola sigla NS, centrate verticalmente rispetto ai rispettivi gruppi.
+- Ridotta al minimo la micro-colonna S/NS e aumentato lo spazio utile per il nome del giocatore.
+- Period Load Report e Session Report: nomi completi, con adattamento automatico del font alla cella e senza troncamento.
+
+## v3.5.2
+
+- Corretto il Period Load Report: una sola etichetta S e una sola NS, centrate a sinistra dei nomi e non ripetute per giocatore.
+- Reso più marcato il separatore orizzontale tra i gruppi S e NS.
+- Ripristinata l’intera distribuzione dei giocatori del giorno nei grafici di dettaglio anche quando è selezionato un solo giocatore.
+- Il giocatore selezionato resta evidenziato con un rombo giallo più grande e il nome.
+- Nessuna modifica al database, al PLI o alle altre funzionalità.
+
+
+## v3.5.1
+
+### Modificato
+- Period Load Report PDF: sostituiti i prefissi ripetuti con una sola etichetta `S` e una sola `NS`, centrate per gruppo.
+- Reso più marcato il separatore orizzontale tra Starters e No Starters.
+- Aggiunti ai grafici PLI i valori assoluti delle metriche che compongono ciascuna componente e i riferimenti individuali.
+- Evidenziati nei grafici di dettaglio i giocatori selezionati con rombo giallo, bordo scuro e nome.
+
+### Verifica
+- Compilati tutti i file Python.
+- Validazione automatica della release completata.
+- Database incluso invariato.
+
+## v3.5.0
+- Introdotto il PAS Load Index (PLI) individuale rispetto al modello prestativo di gara.
+- Sostituito il precedente indice basato sui ranghi percentili della squadra.
+- Modello gara individuale per Distance, alta velocità, sprint, accelerazioni, decelerazioni e Max Speed.
+- Duration normalizzata sul riferimento fisso di 90 minuti.
+- RPE normalizzato sul riferimento fisso di 8.
+- Sei componenti a peso uguale: Volume, Alta velocità, Sprint, Componente neuromuscolare, Velocità massima e Carico interno.
+- Grafici e Key Insights aggiornati per mostrare PLI e percentuali del modello gara.
+- Period Load Report ordinato S prima di NS, con prefisso S/NS e separatore orizzontale grigio chiaro.
+- Database invariato.
+
+## v3.4.1
+
+- PAS Intelligence: confronto visuale Starters (S) vs No Starters (NS) nella Dashboard e in Period Load.
+- Due pannelli affiancati con scale coerenti per ranking, soglie, metriche singole e indice multi-metrica.
+- Key Insights con media separata dei due gruppi.
+- Corretto il parser S/NS per evitare sovrapposizioni tra “Starters” e “No Starters”.
+- Nessun nuovo filtro visibile e nessuna modifica ai dati del database.
+
+## v3.4.0
+- Aggiunta analisi completa della seduta tramite PAS Intelligence.
+- Riconosciute richieste generali sulla seduta corrente.
+- Aggiunti grafici di ranking, distribuzione e profilo multi-metrica.
+- Key Insights per ogni metrica con massimo, minimo, media, mediana e dispersione relativa.
+- Sostituita la terminologia “leader” con “carico maggiore” e formulazioni descrittive equivalenti.
+- Nessuna modifica ai dati del database.
+
+## v3.3.9
+- Release di stabilizzazione per Streamlit Community Cloud.
+- Ricreato e validato `requirements.txt`, senza testo descrittivo o righe non installabili.
+- Aggiunto controllo automatico della struttura di release e della compilazione Python.
+- Verificati `app.py`, `modules/config.py`, `modules/__init__.py` e i file essenziali nella radice dello ZIP.
+- Documentata la selezione di Python 3.12 nelle impostazioni avanzate di Streamlit Cloud.
+- Nessuna modifica alle funzionalità e nessuna alterazione del database.
+
+## v3.3.8
+
+- Esteso PAS Intelligence alle richieste sul carico complessivo della giornata.
+- Riconosciute le formulazioni “maggior carico”, “carico maggiore”, “carico complessivo” e varianti equivalenti.
+- “Chi ha fatto il maggior carico oggi?” restituisce il leader multi-metrica.
+- “Fammi vedere i 5 giocatori con maggior carico oggi” restituisce il Top 5.
+- Aggiunto grafico sintetico dell’indice di carico 0–100.
+- Aggiunto profilo per metrica dei giocatori selezionati su scala percentile comune.
+- Aggiunti Key Insights separati per ogni metrica disponibile.
+- Nessuna modifica ai dati del database.
+
+## v3.3.7
+
+- Corretto il riconoscimento di `ultimi N giorni` in Period Load.
+- Gli intervalli sono inclusivi dell'ultimo giorno disponibile (`N=3` = oggi più i due giorni precedenti).
+- Aggiunto il riconoscimento di ultime N settimane, settimana corrente/precedente e mese corrente.
+- `km` viene interpretato come Distance quando la richiesta non riguarda velocità o Max Speed.
+- Il PAS Intelligence imposta automaticamente l'intervallo di date corrispondente.
+
+# Changelog
+
+## v3.3.6
+- Esteso PAS Intelligence alla sezione Period Load.
+- Aggiunto riconoscimento di ciclo gara corrente, precedente, ultimi N cicli e cicli nominati.
+- Applicazione automatica di Match Cycle, giocatori, ruoli, S/NS e metriche nei totali di periodo.
+- Aggiunti grafici contestuali per totali, ranking e confronto tra cicli gara.
+- Esteso PAS Intelligence alla sezione Drills con ranking per esercitazione e confronto per giocatore.
+- Applicazione interna di cicli gara e S/NS nei Drills senza nuovi filtri visibili.
+- Migliorato il riconoscimento di termini come Possession e ciclo gara attuale.
+- Database invariato.
+
+## v3.3.5
+
+### Migliorato
+- Nella Dashboard, la card Max Speed mostra il valore assoluto in km/h e sotto la percentuale rispetto al massimo individuale.
+- Nel confronto giocatori della Dashboard, le etichette Max Speed mostrano su due righe km/h e percentuale individuale.
+- Nei grafici PAS Intelligence relativi alla % Max Speed, ogni giocatore mostra sia il valore assoluto sia la percentuale.
+- Titoli e tooltip distinguono chiaramente Max Speed (km/h) e % del massimo individuale.
+
+### Verifica
+- Compilati tutti i file Python.
+- Database incluso lasciato invariato.
+- Archivio ZIP verificato.
+
+## v3.3.4
+
+### Corretto
+- Risoluzione esplicita della directory radice del progetto prima degli import locali.
+- Maggiore robustezza degli import `modules.*` su Streamlit Cloud.
+
+### Verifica
+- Confermata la presenza di `modules/config.py` e `modules/__init__.py` nello ZIP.
+- Eseguito smoke test degli import da una directory estratta pulita.
+- Compilati tutti i file Python.
+- Database incluso lasciato invariato.
+
+## 3.3.3
+
+- Corretta la rappresentazione della `% Max Speed individuale`: valori e soglie sono sempre espressi in percentuale, non in km/h.
+- Aggiunto il riconoscimento di richieste positive e negative come “ha raggiunto”, “non ha raggiunto”, “ha superato” e “non ha superato”.
+- Estesa la stessa semantica di soglia a tutte le metriche supportate dal PAS Intelligence.
+- Uniformate etichette, grafici, configurazione applicata e Key Insights.
+
+# Changelog
+
+## 3.3.2
+
+- Riconoscimento testuale di Starters (`S`) e No Starters (`NS`) senza nuovi filtri UI.
+- Riconoscimento dei ruoli e dei principali sinonimi italiani nelle richieste PAS Intelligence.
+- Aggiunta analisi della percentuale di Max Speed rispetto al massimo storico individuale.
+- Supportate soglie percentuali come `oltre l’85% di Max Speed`.
+- Aggiunto ranking multi-metrica del carico tramite media dei ranghi percentili con peso uguale.
+- Supportate richieste come `i 5 giocatori con il carico maggiore di oggi`.
+- Aggiornati grafici prioritari e Key Insights per le nuove condizioni.
+- Database invariato.
+
+
+## 3.3.1
+
+- PAS Intelligence: grafici soglia con intero gruppo visibile.
+- Evidenziati con il colore della metrica i giocatori che soddisfano la condizione.
+- Nomi corrispondenti evidenziati nel grafico.
+- Aggiunta linea della soglia con etichetta.
+- Key Insights estesi con elenco dei giocatori sopra/sotto soglia.
+- Migliorato il riconoscimento di frasi naturali come “ha superato i 3,5 km”.
+- Nessuna modifica al database o alle altre funzionalità.
+
+## 3.3.0
+- Mostrato il grafico prioritario immediatamente dopo la richiesta PAS Intelligence.
+- Aggiunta memoria controllata del contesto tra richieste successive.
+- Aggiunti livello di confidenza, sezione selezionata e configurazione applicata.
+- Aggiunte Quick Actions per storico, confronto con il ruolo, Top 5 e vista squadra.
+- Aggiunto `modules/pas_knowledge.py` per centralizzare sinonimi delle metriche e regole di navigazione.
+- Mantenuto il riuso delle pagine e dei componenti originali del PAS.
+- Database invariato.
+
+## 3.2.1
+- Rimosso il calendario Planner incorporato dalla Dashboard.
+- Rimossi dalla Dashboard la navigazione mensile e il pulsante `Apri Planner`.
+- Mantenuta invariata e accessibile dal menu laterale la pagina Planner dedicata.
+- Nessuna modifica alle analisi, ai filtri, ai grafici o al database.
+
+## 3.2.0
+- Introdotto il primo PAS Intelligence Engine.
+- Aggiunta selezione automatica della sezione in base alla richiesta.
+- Supportata navigazione verso Dashboard, Drills, Match Analysis, Period Load, Planner, Forecast e Return To Play.
+- Aggiunta preconfigurazione controllata di giocatori, ruoli, metriche e drill quando disponibili.
+- Mantenuto il riuso dei componenti originali di ciascuna sezione.
+- Nessuna modifica ai dati del database.
+
+## v3.1.6
+
+- Rimossi dalla Dashboard il titolo grande `Performance Analysis System — Hellas Verona 2025-26` e la riga informativa del database accanto al Planner.
+- Mantenuto invariato il Planner e lasciate disponibili le informazioni sul database nella sidebar.
+- Nessuna modifica alle analisi, ai grafici, ai filtri o al database.
+
+## v3.1.5
+
+- Rinominata e ridisegnata la sezione `Chiedi a PAS` come `PAS Analysis`.
+- Introdotta una barra operativa compatta con richiesta, metrica, analisi e analisi della giornata sulla stessa riga.
+- Rimossi gli elementi visivi da chatbot e ridotto lo spazio verticale occupato.
+- Inserito il risultato in un pannello comprimibile, mantenendo Key Insights e componenti originali della Dashboard.
+- Nessuna modifica alla logica analitica, alle altre sezioni o al database.
+
+## v3.1.4
+
+- Aggiunti Key Insights contestuali alle richieste di `Chiedi a PAS`.
+- Gli insight vengono mostrati nel riquadro della richiesta prima dei componenti originali della Dashboard.
+- Supportati insight oggettivi per confronti tra giocatori, storico personale, soglie, Top/Bottom e analisi automatica della giornata.
+- Inclusi differenze percentuali, posizione nello storico, percentile, conteggi sopra soglia, media del gruppo filtrato, leader e dispersione.
+- Nessun giudizio interpretativo o medico: gli insight derivano esclusivamente da calcoli verificabili.
+- Database invariato.
+
+## v3.1.3
+
+- Collegato “Chiedi a PAS” ai widget e alle visualizzazioni originali della Dashboard.
+- Aggiunto routing controllato per panoramica, confronto giocatori, storico, ruoli, soglie e classifiche Top/Bottom.
+- La metrica richiesta configura sia la panoramica sia i grafici di dettaglio.
+- Rimossi i grafici paralleli per le richieste già rappresentabili nella Dashboard.
+- Aggiunto ripristino della configurazione applicata dall’assistente.
+- Database invariato.
+
+## v3.1.2
+
+- Aggiunto il selettore della metrica accanto alla richiesta conversazionale nella Dashboard.
+- La metrica selezionata agisce come contesto predefinito; una metrica esplicita nel testo ha priorità.
+- Aggiunto il pulsante `Analizza la giornata` per generare un’analisi automatica della metrica selezionata.
+- L’analisi include media, mediana, leader, valore minimo, giocatori sopra/sotto media, grafico e tabella ordinata.
+- Mantenuta la risposta conversazionale in cima alla Dashboard senza alterare i filtri manuali.
+- Nessuna modifica ai dati del database o alle altre sezioni del PAS.
+
+
+## v3.1.1
+
+- Trasformato `Chiedi a PAS` in una sezione conversazionale autonoma nella Dashboard.
+- Rimossa la metrica di riferimento obbligatoria: la metrica viene riconosciuta dalla richiesta testuale.
+- Aggiunta una risposta testuale prioritaria in cima alla Dashboard con grafici contestuali.
+- Implementati confronto tra giocatori, confronto della seduta con lo storico personale e ricerche per soglia, Top N e Bottom N.
+- Aggiunto un riepilogo multi-metrica quando vengono indicati giocatori senza una metrica specifica.
+- Rimossa l'applicazione automatica dei filtri della Dashboard da parte dell'assistente.
+- Mantenuta invariata la Dashboard ordinaria e non implementati gli Insights automatici, rinviati a una release successiva con regole dedicate.
+- Nessuna modifica ai dati del database o alle altre sezioni del PAS.
+
+
+## v3.1.0
+
+- Trasformato `Chiedi a PAS` da analisi separata a controller dei filtri della Dashboard.
+- Collegati i comandi allo stato Streamlit di data, drill, metriche, giocatori e modalità delle card.
+- Le richieste con soglia selezionano direttamente i giocatori che rispettano il criterio.
+- Aggiunto supporto a ruoli, Top N e Bottom N, mantenendo la conversione automatica delle unità.
+- Aggiunti riepilogo dei filtri applicati e comando di ripristino della Dashboard.
+- Nessuna modifica ai dati del database o alle altre sezioni del PAS.
+
+
+## v3.0.7
+
+- Concentrata la funzione `Chiedi a PAS` esclusivamente nella Dashboard per la fase di potenziamento.
+- Aggiunto un selettore della metrica di riferimento, utilizzato quando la richiesta non nomina esplicitamente la metrica.
+- Estese le soglie a tutte le metriche PAS con operatori linguistici: superato/oltre, raggiunto/almeno, sotto e al massimo.
+- Aggiunta la conversione automatica delle unità, incluso `km` → `m` per le metriche di distanza.
+- Migliorata la precisione dell’interpretazione con riepilogo della condizione, unità e metrica applicate.
+- Mantenuti grafico, tabella, Top N, selezione giocatori e date senza modificare il database.
+
+## v3.0.6
+
+- Aggiunta la barra contestuale `Chiedi a PAS` in tutte le sezioni.
+- Introdotto un interprete deterministico locale, senza dipendenze da API esterne.
+- Supportati giocatori, date, metriche, confronti, soglie e Top N.
+- Aggiunti grafico comparativo, tabella risultati e riepilogo dell’interpretazione.
+- Nessuna modifica ai dati del database o alle funzionalità esistenti.
+
+## v3.0.5
+
+### Modificato
+- Nei box plot Drills, ogni ruolo o giocatore utilizza un colore distinto e stabile.
+- Contorno, riempimento e punti del box plot condividono il colore dell’entità.
+- Aggiunta una legenda che associa chiaramente il colore al ruolo o al giocatore.
+- Rimosse le etichette testuali sopra i box plot.
+- Applicata la stessa rappresentazione ai grafici Drills nel report PDF.
+- Aggiornata la versione dell’applicazione a `3.0.5`.
+
+### Verifica
+- Nessuna modifica ai calcoli, alle aggregazioni o ai dati del database incluso.
+- Nessuna modifica alle funzionalità non richieste.
+
+## v3.0.4
+
+### Modificato
+- Nei box plot Drills, contorno e riempimento mantengono il colore PAS associato alla metrica.
+- I punti assumono colori distinti e stabili in base al ruolo o al giocatore selezionato.
+- Le etichette identificative e i valori medi a schermo riprendono il colore dell’entità.
+- La legenda indica che il colore dei punti identifica ruolo o giocatore.
+- La stessa codifica visiva viene utilizzata nel report PDF Drills.
+- Aggiornata la versione dell’applicazione a `3.0.4`.
+
+### Verifica
+- Nessuna modifica ai calcoli, alle aggregazioni o ai dati del database incluso.
+- Nessuna modifica alle funzionalità non richieste.
+
+## v3.0.3
+
+### Aggiunto
+- Simboli distinti per ruoli e giocatori nei punti dei box plot Drills.
+- Etichetta del ruolo o nome abbreviato del giocatore sopra ogni box plot.
+- Indicazione in legenda che il simbolo identifica il ruolo o il giocatore.
+
+### Modificato
+- Nome completo dell’entità mantenuto in legenda e hover.
+- Stessa codifica visiva applicata ai box plot Drills del report PDF.
+- Aggiornata la versione dell’applicazione a `3.0.3`.
+
+### Verifica
+- Colore PAS ancora associato esclusivamente alla metrica.
+- Nessuna modifica ai dati del database incluso.
+- Nessuna modifica alle funzionalità non richieste.
+
+## v3.0.2
+
+### Aggiunto
+- Modalità `Roles` e `Players` nella sezione Drills.
+- Punti dei box plot calcolati per singola occorrenza `Drill-Date`.
+- Identificativo dell’occorrenza nell’hover dei punti.
+
+### Modificato
+- In modalità Roles, aggregazione per data e drill del Team Average o del ruolo selezionato.
+- In modalità Players, aggregazione per data, drill e giocatore.
+- Conteggio delle occorrenze distinte nel riepilogo statistico.
+- Report PDF Drills con indicazione della modalità di analisi.
+- Aggiornata la versione dell’applicazione a `3.0.2`.
+
+### Verifica
+- Mantenuta la palette PAS v3.0.1 nei box plot Drills.
+- Nessuna modifica ai dati del database incluso.
+- Nessuna modifica alle funzionalità non richieste.
+
+## v3.0.1
+
+### Modificato
+- Applicata esclusivamente la palette PAS ai box plot Drills nella schermata Streamlit.
+- Applicata la medesima palette PAS ai box plot Drills inclusi nel report PDF.
+- Aggiornata la versione dell'applicazione a `3.0.1`.
+
+### Verifica
+- Nessuna modifica ai dati del database incluso.
+- Nessuna modifica alle funzionalità non richieste.

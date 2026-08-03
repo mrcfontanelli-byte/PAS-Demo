@@ -1,0 +1,20 @@
+PAS DEMO v2.2.0 - CHECKLIST DEPLOY
+
+Nella root del repository GitHub devono comparire direttamente:
+
+app.py
+requirements.txt
+Database Hellas 25-26.xlsx
+modules/
+assets/
+
+Procedura:
+1. Estrai PAS_DEMO_v2_2_0.zip.
+2. Carica tutto il contenuto estratto nella root del repository.
+3. Controlla che modules/version.py contenga:
+   APP_BUILD_VERSION = "2.2.0"
+4. Attendi il redeploy automatico di Streamlit.
+5. Se vedi ancora la versione precedente, usa Reboot app.
+
+Questa versione non contiene più il controllo bloccante
+CHARTS_MODULE_VERSION tra app.py e charts.py.

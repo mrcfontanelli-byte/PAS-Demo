@@ -1,0 +1,7 @@
+PAS v1.24 - INSTALLAZIONE PULITA
+
+La nuova pagina Totali di periodo si trova nella navigazione
+immediatamente sotto Dashboard.
+
+Consente analisi individuali cumulative per date o Match Cycle
+e genera il Period Load Report PDF.
