@@ -14,3 +14,10 @@
 12. Registra ultimo cursore di sincronizzazione.
 
 La release 3.7.36 implementa solo il piano e i contratti; non esegue scritture.
+
+## v3.7.40 - Reference data snapshot
+
+Dopo una connessione runtime valida, il comando `Sincronizza anagrafiche GPExe`
+recupera Teams, Categories, Tags e Athletes, li normalizza e salva una snapshot
+atomica in `.pas_data/gpexe_snapshot.json`. La snapshot non alimenta ancora le
+analisi e non modifica `Database Hellas 25-26.xlsx`.

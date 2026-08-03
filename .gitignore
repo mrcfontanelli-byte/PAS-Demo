@@ -7,3 +7,6 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# PAS Connect runtime snapshots
+.pas_data/

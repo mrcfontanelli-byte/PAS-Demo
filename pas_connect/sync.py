@@ -1,8 +1,14 @@
-"""Piano di sincronizzazione; nessuna scrittura dati è attiva in v3.7.36."""
+"""Piano e prima sincronizzazione anagrafica GPExe -> snapshot PAS."""
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
+from typing import Any, Callable, Mapping
+
+from .client import GPExeClient
+from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, Endpoint
+from .mapper import map_athlete, map_category, map_many, map_tag, map_team
 
 
 class SyncResource(str, Enum):
@@ -47,3 +53,72 @@ def build_default_sync_plan() -> SyncPlan:
     )
     plan.validate()
     return plan
+
+
+def _rows_from_response(payload: Any) -> tuple[list[Mapping[str, Any]], int | None]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, Mapping)], None
+    if not isinstance(payload, Mapping):
+        return [], None
+    for key in ("results", "data", "items"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            total = payload.get("count", payload.get("total", payload.get("total_count")))
+            return [item for item in value if isinstance(item, Mapping)], int(total) if isinstance(total, (int, float)) else None
+    return [], None
+
+
+def fetch_all_pages(
+    client: GPExeClient,
+    endpoint: Endpoint,
+    *,
+    page_size: int = 100,
+    max_pages: int = 1000,
+) -> list[Mapping[str, Any]]:
+    """Recupera endpoint lista, supportando sia array semplici sia risposte paginate."""
+    collected: list[Mapping[str, Any]] = []
+    for page in range(1, max_pages + 1):
+        payload = client.request(endpoint, query={"page": page, "page_size": page_size})
+        rows, total = _rows_from_response(payload)
+        collected.extend(rows)
+        if isinstance(payload, list):
+            break
+        if not rows or len(rows) < page_size or (total is not None and len(collected) >= total):
+            break
+    else:  # pragma: no cover - guardia di sicurezza
+        raise RuntimeError(f"Paginazione GPExe oltre {max_pages} pagine per {endpoint.path}.")
+    return collected
+
+
+def _fetch_non_paginated_or_paginated(client: GPExeClient, endpoint: Endpoint) -> list[Mapping[str, Any]]:
+    payload = client.request(endpoint)
+    rows, total = _rows_from_response(payload)
+    if isinstance(payload, list):
+        return rows
+    if rows and (total is None or len(rows) >= total):
+        return rows
+    return fetch_all_pages(client, endpoint)
+
+
+def sync_reference_data(client: GPExeClient) -> dict[str, Any]:
+    """Sincronizza solo anagrafiche e classificazioni, senza toccare il DB Excel."""
+    raw_teams = fetch_all_pages(client, TEAMS)
+    raw_categories = _fetch_non_paginated_or_paginated(client, SESSION_CATEGORIES)
+    raw_tags = _fetch_non_paginated_or_paginated(client, SESSION_TAGS)
+    raw_athletes = fetch_all_pages(client, ATHLETES)
+
+    snapshot = {
+        "schema_version": 1,
+        "provider": "gpexe",
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+        "resources": {
+            "teams": map_many(raw_teams, map_team),
+            "categories": map_many(raw_categories, map_category),
+            "tags": map_many(raw_tags, map_tag),
+            "athletes": map_many(raw_athletes, map_athlete),
+        },
+    }
+    snapshot["counts"] = {
+        name: len(rows) for name, rows in snapshot["resources"].items()
+    }
+    return snapshot

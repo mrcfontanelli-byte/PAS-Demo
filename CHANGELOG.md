@@ -1,3 +1,12 @@
+## Versione 3.7.40
+
+### Prima sincronizzazione anagrafica GPExe
+- Aggiunto il comando **Sincronizza anagrafiche GPExe** per Teams, Categories, Tags e Athletes.
+- Le risposte API vengono normalizzate nello schema PAS e salvate in `.pas_data/gpexe_snapshot.json`.
+- La snapshot è separata dal database Excel, non contiene credenziali ed è esclusa da Git.
+- Aggiunti riepilogo dei record sincronizzati, paginazione e test automatici senza chiamate di rete reali.
+- Excel resta la sorgente operativa del PAS; nessuna analisi usa ancora la snapshot GPExe.
+
 ## [3.7.39] - 2026-08-03
 
 ### Aggiunto

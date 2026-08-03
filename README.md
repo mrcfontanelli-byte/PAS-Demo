@@ -21,7 +21,11 @@
 - Le credenziali non vengono salvate nei file: su Streamlit Cloud usare `st.secrets`.
 - Excel rimane la sorgente dati attiva; la sincronizzazione sarà introdotta nelle release successive.
 
-### PAS Connect Foundation v3.7.36
+### PAS
+
+**Versione corrente: 3.7.40**
+
+La release 3.7.40 introduce la prima sincronizzazione anagrafica GPExe (Teams, Categories, Tags e Athletes) in una snapshot locale isolata. Excel resta la sorgente dati operativa. Connect Foundation v3.7.36
 
 - Introdotto il package isolato `pas_connect/` con configurazione provider, catalogo endpoint GPExe, autenticazione token, client REST testabile, mapper iniziali e piano di sincronizzazione.
 - Excel resta la sorgente dati predefinita e operativa: nessuna sezione, analisi o interfaccia è stata modificata.

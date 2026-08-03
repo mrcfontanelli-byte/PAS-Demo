@@ -59,7 +59,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeConfig
+from pas_connect import GPExeClient, GPExeConfig, SnapshotStore, sync_reference_data
 from pas_connect.endpoints import TEAMS
 
 
@@ -3060,6 +3060,59 @@ with settings_column:
                 st.error(f"Connessione GPExe non riuscita: {exc}")
 
         if is_gpexe_connected:
+            st.divider()
+            st.markdown("##### Prima sincronizzazione")
+            st.caption(
+                "Scarica Teams, Categories, Tags e Athletes in una snapshot locale separata. "
+                "Il database Excel e le analisi del PAS restano invariati."
+            )
+            if st.button(
+                "Sincronizza anagrafiche GPExe",
+                key="pas_gpexe_sync_reference",
+                use_container_width=True,
+            ):
+                try:
+                    runtime_config = GPExeConfig(
+                        base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                        token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                        timeout_seconds=30.0,
+                        verify_tls=True,
+                    )
+                    runtime_config.validate(require_credentials=True)
+                    runtime_client = GPExeClient(runtime_config)
+                    with st.spinner("Sincronizzazione anagrafiche GPExe in corso..."):
+                        snapshot = sync_reference_data(runtime_client)
+                        snapshot_path = SnapshotStore.default().save(snapshot)
+                    st.session_state["pas_gpexe_last_snapshot"] = snapshot
+                    st.session_state["pas_gpexe_last_snapshot_path"] = str(snapshot_path)
+                    st.success(
+                        "Sincronizzazione completata: "
+                        f"{snapshot['counts']['teams']} team, "
+                        f"{snapshot['counts']['categories']} categorie, "
+                        f"{snapshot['counts']['tags']} tag e "
+                        f"{snapshot['counts']['athletes']} atleti."
+                    )
+                except Exception as exc:
+                    st.error(f"Sincronizzazione GPExe non riuscita: {exc}")
+
+            last_snapshot = st.session_state.get("pas_gpexe_last_snapshot")
+            if not isinstance(last_snapshot, dict):
+                try:
+                    last_snapshot = SnapshotStore.default().load()
+                except Exception:
+                    last_snapshot = None
+            if isinstance(last_snapshot, dict):
+                counts = last_snapshot.get("counts", {})
+                synced_at = last_snapshot.get("synced_at", "")
+                st.caption(
+                    "Ultima snapshot: "
+                    f"{counts.get('teams', 0)} team · "
+                    f"{counts.get('categories', 0)} categorie · "
+                    f"{counts.get('tags', 0)} tag · "
+                    f"{counts.get('athletes', 0)} atleti"
+                    + (f" · {synced_at}" if synced_at else "")
+                )
+
             if st.button(
                 "Disconnetti GPExe",
                 key="pas_gpexe_disconnect",

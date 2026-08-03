@@ -7,6 +7,8 @@ attivato esplicitamente in una release successiva.
 
 from .config import DataProvider, GPExeConfig, PASConnectConfig
 from .client import GPExeClient
+from .storage import SnapshotStore
+from .sync import sync_reference_data
 from .sync import SyncPlan, build_default_sync_plan
 
 __all__ = [
@@ -14,6 +16,8 @@ __all__ = [
     "GPExeConfig",
     "PASConnectConfig",
     "GPExeClient",
+    "SnapshotStore",
+    "sync_reference_data",
     "SyncPlan",
     "build_default_sync_plan",
 ]
