@@ -1,15 +1,13 @@
-## v3.8.8
+## v3.8.9
 
 ### Aggiunto
-- GPExe Mapping Layer puro e testabile con schema canonico delle metriche PAS.
-- Alias controllati per le principali metriche prestative GPExe.
-- Validazione numerica, campi obbligatori e conversioni esplicite delle unità supportate.
+- GPExe Import Engine per export JSON, CSV e XLSX.
+- Importazione canonica in memoria con validazione per record.
+- Errore controllato predisposto per il fallback Excel.
 
 ### Invariato
-- GPExe resta non operativo nel PAS Core e il fallback continua a utilizzare Excel.
-- Nessuna modifica a calcoli, grafica, report, filtri o dati.
-- Database Excel incluso completamente invariato.
-- Compatibilità con Streamlit Cloud preservata.
+- GPExe non alimenta ancora il PAS Core.
+- Nessuna modifica a calcoli, grafica, report, filtri o database Excel.
 
 ## v3.8.7
 
