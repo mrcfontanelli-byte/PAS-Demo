@@ -1,3 +1,13 @@
+## Versione 3.7.41
+
+### Database PAS Connect per anagrafiche GPExe
+- Teams, Categories, Tags e Athletes sincronizzati vengono salvati anche in `.pas_data/pas_connect.sqlite3`.
+- Aggiunte tabelle SQLite dedicate e aggiornamento tramite upsert sugli ID stabili GPExe, senza duplicati.
+- Aggiunto registro delle sincronizzazioni con stato, data/ora e conteggi importati.
+- La snapshot JSON resta disponibile come copia diagnostica.
+- Il database Excel operativo, Dashboard, analisi e report restano invariati.
+- Su Streamlit Community Cloud il database locale è effimero e viene ricreato dopo reboot/deploy; una persistenza cloud esterna sarà introdotta successivamente.
+
 ## Versione 3.7.40
 
 ### Prima sincronizzazione anagrafica GPExe

@@ -21,3 +21,12 @@ Dopo una connessione runtime valida, il comando `Sincronizza anagrafiche GPExe`
 recupera Teams, Categories, Tags e Athletes, li normalizza e salva una snapshot
 atomica in `.pas_data/gpexe_snapshot.json`. La snapshot non alimenta ancora le
 analisi e non modifica `Database Hellas 25-26.xlsx`.
+
+## v3.7.41 - Reference data database
+
+La stessa sincronizzazione scrive ora in modo transazionale anche nel database
+SQLite isolato `.pas_data/pas_connect.sqlite3`. Gli ID provider sono usati come
+chiavi di upsert e ogni esecuzione viene registrata in `gpexe_sync_runs`.
+La sorgente operativa del PAS resta Excel. Il file locale è adatto a sviluppo e
+verifica; su Streamlit Community Cloud è effimero e non rappresenta ancora la
+persistenza cloud definitiva.

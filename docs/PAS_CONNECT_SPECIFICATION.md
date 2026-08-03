@@ -32,3 +32,9 @@ alcuna chiamata remota e mantiene Excel come unica sorgente operativa.
 Disponibili: configurazione, catalogo endpoint, autenticazione, client REST
 isolato, mapper iniziali e piano di sincronizzazione. Non disponibili: UI,
 persistenza SQL, sincronizzazione reale e uso dei dati GPExe nell'app.
+
+## Persistenza reference data v3.7.41
+
+Le anagrafiche normalizzate sono scritte nel database SQLite PAS Connect tramite
+transazione e upsert. Token e password non vengono mai persistiti. L'Excel
+operativo non viene aperto né modificato dalla sincronizzazione GPExe.

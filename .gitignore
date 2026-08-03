@@ -8,5 +8,5 @@ __pycache__/
 .vscode/
 .idea/
 
-# PAS Connect runtime snapshots
+# PAS Connect runtime data (snapshot JSON e database SQLite)
 .pas_data/

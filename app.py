@@ -59,7 +59,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeConfig, SnapshotStore, sync_reference_data
+from pas_connect import GPExeClient, GPExeConfig, PASConnectDatabase, SnapshotStore, sync_reference_data
 from pas_connect.endpoints import TEAMS
 
 
@@ -3063,8 +3063,8 @@ with settings_column:
             st.divider()
             st.markdown("##### Prima sincronizzazione")
             st.caption(
-                "Scarica Teams, Categories, Tags e Athletes in una snapshot locale separata. "
-                "Il database Excel e le analisi del PAS restano invariati."
+                "Scarica Teams, Categories, Tags e Athletes e li salva nel database PAS Connect "
+                "separato. Il database Excel e le analisi del PAS restano invariati."
             )
             if st.button(
                 "Sincronizza anagrafiche GPExe",
@@ -3083,34 +3083,43 @@ with settings_column:
                     with st.spinner("Sincronizzazione anagrafiche GPExe in corso..."):
                         snapshot = sync_reference_data(runtime_client)
                         snapshot_path = SnapshotStore.default().save(snapshot)
+                        database_result = PASConnectDatabase.default().replace_reference_data(snapshot)
                     st.session_state["pas_gpexe_last_snapshot"] = snapshot
                     st.session_state["pas_gpexe_last_snapshot_path"] = str(snapshot_path)
+                    st.session_state["pas_gpexe_last_database_path"] = str(database_result.database_path)
                     st.success(
-                        "Sincronizzazione completata: "
-                        f"{snapshot['counts']['teams']} team, "
-                        f"{snapshot['counts']['categories']} categorie, "
-                        f"{snapshot['counts']['tags']} tag e "
-                        f"{snapshot['counts']['athletes']} atleti."
+                        "Sincronizzazione completata nel database PAS Connect: "
+                        f"{database_result.counts['teams']} team, "
+                        f"{database_result.counts['categories']} categorie, "
+                        f"{database_result.counts['tags']} tag e "
+                        f"{database_result.counts['athletes']} atleti."
                     )
                 except Exception as exc:
                     st.error(f"Sincronizzazione GPExe non riuscita: {exc}")
 
-            last_snapshot = st.session_state.get("pas_gpexe_last_snapshot")
-            if not isinstance(last_snapshot, dict):
-                try:
-                    last_snapshot = SnapshotStore.default().load()
-                except Exception:
-                    last_snapshot = None
-            if isinstance(last_snapshot, dict):
-                counts = last_snapshot.get("counts", {})
-                synced_at = last_snapshot.get("synced_at", "")
+            try:
+                reference_database = PASConnectDatabase.default()
+                database_counts = reference_database.counts()
+                last_database_sync = reference_database.last_successful_sync()
+            except Exception:
+                database_counts = {"teams": 0, "categories": 0, "tags": 0, "athletes": 0}
+                last_database_sync = None
+            if any(database_counts.values()):
+                sync_time = ""
+                if isinstance(last_database_sync, dict):
+                    sync_time = str(last_database_sync.get("completed_at") or "")
                 st.caption(
-                    "Ultima snapshot: "
-                    f"{counts.get('teams', 0)} team · "
-                    f"{counts.get('categories', 0)} categorie · "
-                    f"{counts.get('tags', 0)} tag · "
-                    f"{counts.get('athletes', 0)} atleti"
-                    + (f" · {synced_at}" if synced_at else "")
+                    "Database PAS Connect: "
+                    f"{database_counts.get('teams', 0)} team · "
+                    f"{database_counts.get('categories', 0)} categorie · "
+                    f"{database_counts.get('tags', 0)} tag · "
+                    f"{database_counts.get('athletes', 0)} atleti"
+                    + (f" · ultima sincronizzazione {sync_time}" if sync_time else "")
+                )
+                st.caption(
+                    "Nota Streamlit Cloud: il database locale è isolato dall’Excel ma viene "
+                    "ricreato dopo reboot o nuovo deploy. La persistenza cloud sarà introdotta "
+                    "in una fase successiva."
                 )
 
             if st.button(

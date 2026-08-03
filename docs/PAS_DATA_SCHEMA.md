@@ -43,3 +43,16 @@ Identificativo della traccia, atleta, team, timestamp UTC, timezone e stato.
 - Metriche GPExe posizionali interpretate tramite `table_data.headers`, mai con indici fissi.
 - Nomi categorie PAS controllati da tassonomia; categorie provider conservate separatamente.
 - `Team Average` non è un atleta e non entra nei totali additivi.
+
+## Implementazione locale v3.7.41
+
+Le prime entità provider sono persistite nel file isolato
+`.pas_data/pas_connect.sqlite3` nelle tabelle `gpexe_teams`,
+`gpexe_categories`, `gpexe_tags`, `gpexe_athletes` e `gpexe_sync_runs`.
+Le chiavi primarie sono gli ID stabili GPExe e le sincronizzazioni successive
+aggiornano i record con upsert, senza duplicarli. Questo database non sostituisce
+`Database Hellas 25-26.xlsx` e non alimenta ancora il PAS Core.
+
+Su Streamlit Community Cloud il filesystem è effimero: il file SQLite può essere
+ricreato dopo reboot o deploy. La persistenza definitiva richiederà un database
+cloud esterno mantenendo lo stesso schema logico.
