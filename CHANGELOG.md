@@ -1,3 +1,15 @@
+## [3.7.38] - 2026-08-03
+
+### Aggiunto
+- Pannello **PAS Connect · GPExe** in Settings.
+- Autenticazione tramite token oppure username/password.
+- Test reale della connessione con verifica dell’accesso all’endpoint Teams.
+- Supporto a `st.secrets` per le credenziali su Streamlit Cloud.
+- Token ottenuto tramite login conservato esclusivamente nella sessione runtime.
+
+### Invariato
+- Excel resta la sorgente dati operativa; nessuna sincronizzazione o modifica al database incluso.
+
 ## [3.7.37] - 2026-08-03
 
 ### Corretto

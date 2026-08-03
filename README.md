@@ -1,10 +1,17 @@
-## Versione 3.7.37
+## Versione 3.7.38
 
 ### Ripristino tema rosso PAS
 - Colore primario Streamlit riportato a `#D71920`.
 - Nessuna modifica a funzioni, dati o architettura PAS Connect.
 
 ## Versione 3.7.36
+
+### GPExe Connection Test v3.7.38
+
+- In **Settings → PAS Connect · GPExe** è disponibile il test di autenticazione e accesso Teams.
+- Sono supportati token oppure username/password.
+- Le credenziali non vengono salvate nei file: su Streamlit Cloud usare `st.secrets`.
+- Excel rimane la sorgente dati attiva; la sincronizzazione sarà introdotta nelle release successive.
 
 ### PAS Connect Foundation v3.7.36
 

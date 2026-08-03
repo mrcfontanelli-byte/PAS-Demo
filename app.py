@@ -59,6 +59,8 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
+from pas_connect import GPExeClient, GPExeConfig
+from pas_connect.endpoints import TEAMS
 
 
 st.set_page_config(
@@ -2937,6 +2939,115 @@ with settings_column:
             f"ultimo dato "
             f"{pd.Timestamp(database_info['last_date']).strftime('%d/%m/%Y')}"
         )
+
+        st.divider()
+        st.markdown("#### PAS Connect · GPExe")
+        st.caption(
+            "Testa autenticazione e accesso alle API. "
+            "Excel resta la sorgente dati attiva in questa release."
+        )
+
+        try:
+            gpexe_secrets = dict(st.secrets.get("gpexe", {}))
+        except Exception:
+            gpexe_secrets = {}
+
+        gpexe_base_url = st.text_input(
+            "API base URL",
+            value=str(gpexe_secrets.get("base_url", "https://api.gsped.it")),
+            key="pas_gpexe_base_url",
+            help="Indirizzo base delle REST API GPExe/GSPED.",
+        )
+        gpexe_auth_mode = st.radio(
+            "Autenticazione",
+            options=("Token", "Username e password"),
+            horizontal=True,
+            key="pas_gpexe_auth_mode",
+        )
+
+        gpexe_token = ""
+        gpexe_username = ""
+        gpexe_password = ""
+        if gpexe_auth_mode == "Token":
+            gpexe_token = st.text_input(
+                "Token API",
+                value=str(gpexe_secrets.get("token", "")),
+                type="password",
+                key="pas_gpexe_token",
+                help="Il token resta nella sessione corrente e non viene scritto nei file.",
+            )
+        else:
+            gpexe_username = st.text_input(
+                "Username",
+                value=str(gpexe_secrets.get("username", "")),
+                key="pas_gpexe_username",
+            )
+            gpexe_password = st.text_input(
+                "Password",
+                value=str(gpexe_secrets.get("password", "")),
+                type="password",
+                key="pas_gpexe_password",
+            )
+
+        if st.button(
+            "Test connessione GPExe",
+            key="pas_gpexe_test_connection",
+            use_container_width=True,
+        ):
+            try:
+                config = GPExeConfig(
+                    base_url=gpexe_base_url.strip(),
+                    username=gpexe_username.strip(),
+                    password=gpexe_password,
+                    token=gpexe_token.strip(),
+                    timeout_seconds=20.0,
+                    verify_tls=True,
+                )
+                config.validate(require_credentials=True)
+                client = GPExeClient(config)
+                if not client.token:
+                    runtime_token = client.authenticate()
+                    st.session_state["pas_gpexe_runtime_token"] = runtime_token
+
+                teams_response = client.request(
+                    TEAMS,
+                    query={"page": 1, "page_size": 1},
+                )
+                team_count = None
+                if isinstance(teams_response, dict):
+                    for count_key in ("count", "total", "total_count"):
+                        if count_key in teams_response:
+                            team_count = teams_response[count_key]
+                            break
+                    if team_count is None:
+                        for rows_key in ("results", "data", "items"):
+                            rows = teams_response.get(rows_key)
+                            if isinstance(rows, list):
+                                team_count = len(rows)
+                                break
+                elif isinstance(teams_response, list):
+                    team_count = len(teams_response)
+
+                message = "Connessione GPExe riuscita e accesso Teams verificato."
+                if team_count is not None:
+                    message += f" Team rilevati: {team_count}."
+                st.success(message)
+            except Exception as exc:
+                st.error(f"Test GPExe non riuscito: {exc}")
+
+        with st.expander("Configurazione Streamlit Secrets", expanded=False):
+            st.code(
+                '[gpexe]\n'
+                'base_url = "https://api.gsped.it"\n'
+                'token = "INSERISCI_TOKEN"\n'
+                '# oppure username = "..." e password = "..."',
+                language="toml",
+            )
+            st.caption(
+                "Non inserire mai token o password nel repository GitHub. "
+                "Su Streamlit Cloud usa App settings → Secrets."
+            )
+
         st.divider()
         if st.button(
             "Esci dalla Demo",
