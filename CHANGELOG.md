@@ -1,3 +1,12 @@
+## [3.7.37] - 2026-08-03
+
+### Corretto
+- Ripristinato il colore primario rosso PAS (`#D71920`) nei componenti Streamlit.
+- Pulsanti, selezioni e controlli interattivi tornano al contrasto precedente.
+
+### Invariato
+- Architettura PAS Connect, caricamento Excel, analisi, report e database incluso.
+
 ## [3.7.36] - 2026-08-03
 
 ### Aggiunto

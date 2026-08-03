@@ -1,3 +1,9 @@
+## Versione 3.7.37
+
+### Ripristino tema rosso PAS
+- Colore primario Streamlit riportato a `#D71920`.
+- Nessuna modifica a funzioni, dati o architettura PAS Connect.
+
 ## Versione 3.7.36
 
 ### PAS Connect Foundation v3.7.36
