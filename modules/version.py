@@ -1,4 +1,4 @@
 """Versione unica del PAS."""
 
-APP_BUILD_VERSION = "3.9.2"
+APP_BUILD_VERSION = "4.0.0"
 APP_EDITION = "Demo"

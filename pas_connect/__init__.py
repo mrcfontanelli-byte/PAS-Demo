@@ -7,6 +7,8 @@ non verrà attivata esplicitamente in una release successiva.
 
 from .config import DataProvider, GPExeConfig, PASConnectConfig
 from .client import GPExeClient
+from .services import GPExeServices
+from .provider import GPExeAPIDataProvider
 from .storage import SnapshotStore
 from .database import PASConnectDatabase, ReferenceImportResult, SessionImportResult, SessionDetailImportResult, AthleteSessionImportResult
 from .sync import sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, FullSyncEvent
@@ -17,6 +19,8 @@ __all__ = [
     "GPExeConfig",
     "PASConnectConfig",
     "GPExeClient",
+    "GPExeServices",
+    "GPExeAPIDataProvider",
     "SnapshotStore",
     "PASConnectDatabase",
     "ReferenceImportResult",

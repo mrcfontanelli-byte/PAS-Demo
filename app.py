@@ -58,7 +58,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeConfig, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync
+from pas_connect import GPExeClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync
 from pas_connect.endpoints import TEAMS
 
 
@@ -3089,24 +3089,10 @@ with settings_column:
                 if not runtime_token:
                     runtime_token = client.authenticate()
 
-                teams_response = client.request(
-                    TEAMS,
-                    query={"page": 1, "page_size": 1},
-                )
-                team_count = None
-                if isinstance(teams_response, dict):
-                    for count_key in ("count", "total", "total_count"):
-                        if count_key in teams_response:
-                            team_count = teams_response[count_key]
-                            break
-                    if team_count is None:
-                        for rows_key in ("results", "data", "items"):
-                            rows = teams_response.get(rows_key)
-                            if isinstance(rows, list):
-                                team_count = len(rows)
-                                break
-                elif isinstance(teams_response, list):
-                    team_count = len(teams_response)
+                provider = GPExeAPIDataProvider(GPExeServices(client))
+                provider.test_connection()
+                teams = provider.get_teams()
+                team_count = len(teams)
 
                 st.session_state["pas_gpexe_runtime_token"] = runtime_token
                 st.session_state["pas_gpexe_connected"] = True
@@ -3127,6 +3113,38 @@ with settings_column:
                 st.error(f"Connessione GPExe non riuscita: {exc}")
 
         if is_gpexe_connected:
+            st.divider()
+            st.markdown("##### Team e TeamSession")
+            st.caption("Recupero in sola lettura dalle API GPExe; il database Excel non viene modificato.")
+            try:
+                foundation_config = GPExeConfig(
+                    base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                    token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                    timeout_seconds=30.0, verify_tls=True,
+                )
+                foundation_provider = GPExeAPIDataProvider(GPExeServices(GPExeClient(foundation_config)))
+                if st.button("Recupera Team", key="pas_gpexe_get_teams", use_container_width=True):
+                    st.session_state["pas_gpexe_teams"] = foundation_provider.get_teams()
+                teams_foundation = st.session_state.get("pas_gpexe_teams", [])
+                if teams_foundation:
+                    def _entity_label(item):
+                        return str(item.get("name") or item.get("title") or item.get("label") or item.get("id") or "Team")
+                    selected_team_index = st.selectbox(
+                        "Team GPExe", range(len(teams_foundation)),
+                        format_func=lambda index: _entity_label(teams_foundation[index]),
+                        key="pas_gpexe_selected_team_index",
+                    )
+                    selected_team = teams_foundation[selected_team_index]
+                    if st.button("Recupera TeamSession", key="pas_gpexe_get_sessions", use_container_width=True):
+                        team_id = selected_team.get("id") or selected_team.get("pk") or selected_team.get("uuid")
+                        st.session_state["pas_gpexe_team_sessions"] = foundation_provider.get_team_sessions(team_id)
+                    sessions_foundation = st.session_state.get("pas_gpexe_team_sessions", [])
+                    if sessions_foundation:
+                        st.success(f"TeamSession recuperate: {len(sessions_foundation)}")
+                        st.dataframe(pd.DataFrame(sessions_foundation), use_container_width=True, hide_index=True)
+            except Exception as exc:
+                st.error(f"Recupero GPExe non riuscito: {exc}")
+
             st.divider()
             st.markdown("##### Sincronizzazione completa")
             st.caption(

@@ -1,3 +1,12 @@
+# v4.0.0 — GPExe Foundation
+
+- Aggiunto `GPExeClient` resiliente con autenticazione `/auth/token` e gestione token.
+- Aggiunta gestione di timeout, errori di rete, 401 con rinnovo, 429, retry HTTP temporanei e 202 Accepted con polling.
+- Aggiunti servizi API Teams, TeamSessions, Athletes, Categories, Tags e Tracks.
+- Aggiunto `GPExeAPIDataProvider`, separato dal provider Excel.
+- Esteso PAS Connect con login, test connessione, recupero Team e TeamSession in sola lettura.
+- Nessuna modifica a calcoli, report, dashboard o database Excel.
+
 ## v3.9.2
 
 ### Modificato

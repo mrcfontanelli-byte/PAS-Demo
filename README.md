@@ -1,6 +1,11 @@
-## Versione 3.9.2
 
-La release 3.9.2 completa il flusso operativo GPExe nel pannello **PAS Connect** e rifinisce le card della Dashboard. Se GPExe è selezionato, l'export CSV, XLS/XLSX o JSON si carica direttamente da PAS Connect, viene validato e utilizzato esclusivamente in memoria. In assenza di un file valido il PAS continua a utilizzare Excel; Drills e Forecast restano alimentati dal database Excel incluso.
+## PAS v4.0.0 — GPExe Foundation
+
+Questa release introduce il livello fondazionale GPExe senza modificare calcoli, dashboard o report e senza alterare il database Excel incluso. Comprende `GPExeClient`, autenticazione `/auth/token`, gestione runtime del token, timeout, errori di rete, rinnovo su 401, rate limit 429, retry degli errori temporanei e polling delle risposte 202 Accepted. I servizi Teams, TeamSessions, Athletes, Categories, Tags e Tracks sono esposti tramite `GPExeServices`; `GPExeAPIDataProvider` resta separato dal provider Excel. PAS Connect permette login/test connessione e recupero in sola lettura di Team e TeamSession.
+
+## Versione 4.0.0
+
+La release 4.0.0 completa il flusso operativo GPExe nel pannello **PAS Connect** e rifinisce le card della Dashboard. Se GPExe è selezionato, l'export CSV, XLS/XLSX o JSON si carica direttamente da PAS Connect, viene validato e utilizzato esclusivamente in memoria. In assenza di un file valido il PAS continua a utilizzare Excel; Drills e Forecast restano alimentati dal database Excel incluso.
 
 Nella Dashboard, i dettagli di tutti i giocatori restano raccolti nella tendina **Visualizza dettagli giocatori**, chiusa per impostazione predefinita. Il controllo report usa ora tutta la larghezza disponibile ed è mostrato in una singola riga con l'etichetta **Aggiungi box plot al report**.
 

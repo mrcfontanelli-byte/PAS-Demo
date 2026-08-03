@@ -19,3 +19,7 @@ class APIRequestError(PASConnectError):
 
 class MappingError(PASConnectError):
     """Dato del provider non convertibile nello schema PAS."""
+
+
+class RateLimitError(APIRequestError):
+    """Rate limit GPExe esaurito dopo i tentativi previsti."""
