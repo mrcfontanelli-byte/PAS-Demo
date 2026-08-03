@@ -3,7 +3,7 @@ from pathlib import Path
 app = Path("app.py").read_text(encoding="utf-8")
 version = Path("modules/version.py").read_text(encoding="utf-8")
 
-assert 'APP_BUILD_VERSION = "4.0.0"' in version
+assert 'APP_BUILD_VERSION = "4.1.0"' in version
 assert 'homologous_values = historical_entity_metric[overview_column]' in app
 assert 'period_stats = descriptive_statistics(homologous_values)' in app
 assert 'reference_count=int(period_stats["count"])' in app

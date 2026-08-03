@@ -15,7 +15,7 @@ import sqlite3
 from typing import Any, Iterator, Mapping
 
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 @dataclass(frozen=True)
@@ -217,6 +217,15 @@ class PASConnectDatabase:
                     FOREIGN KEY(provider_session_id) REFERENCES gpexe_team_sessions(provider_session_id) ON DELETE CASCADE
                 );
 
+
+                CREATE TABLE IF NOT EXISTS gpexe_tracks (
+                    provider_track_id TEXT PRIMARY KEY,
+                    team_id INTEGER,
+                    track_name TEXT,
+                    synced_at TEXT NOT NULL,
+                    raw_json TEXT NOT NULL
+                );
+
                 CREATE TABLE IF NOT EXISTS gpexe_sync_runs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     resource_group TEXT NOT NULL,
@@ -402,6 +411,25 @@ class PASConnectDatabase:
                 raise
 
         return ReferenceImportResult(self.path, synced_at, counts, run_id)
+
+    def replace_tracks(self, payload: Mapping[str, Any]) -> int:
+        tracks = list(payload.get("tracks") or [])
+        synced_at = str(payload.get("synced_at") or datetime.now(timezone.utc).isoformat())
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute("DELETE FROM gpexe_tracks")
+            for index, row in enumerate(tracks):
+                track_id = row.get("id") or row.get("pk") or row.get("uuid") or f"row-{index}"
+                name = row.get("name") or row.get("title") or row.get("label")
+                team = row.get("team") or row.get("team_id")
+                if isinstance(team, Mapping):
+                    team = team.get("id")
+                connection.execute(
+                    "INSERT INTO gpexe_tracks(provider_track_id, team_id, track_name, synced_at, raw_json) VALUES(?,?,?,?,?)",
+                    (str(track_id), team, str(name) if name is not None else None, synced_at, self._json(row)),
+                )
+            connection.commit()
+        return len(tracks)
 
     def upsert_team_sessions(self, payload: Mapping[str, Any]) -> SessionImportResult:
         sessions = payload.get("sessions")

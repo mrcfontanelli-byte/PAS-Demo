@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any, Callable, Mapping
 
 from .client import GPExeClient
-from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, TEAM_SESSIONS, TEAM_SESSION_DETAIL, ATHLETE_SESSION_DETAIL, Endpoint
+from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, TEAM_SESSIONS, TEAM_SESSION_DETAIL, ATHLETE_SESSION_DETAIL, TRACKS, Endpoint
 from .mapper import map_athlete, map_category, map_many, map_tag, map_team, map_team_session, map_team_session_detail, map_athlete_session_detail
 
 
@@ -225,6 +225,19 @@ def sync_athlete_session_details(
         "failed": len(errors),
     }
 
+
+def sync_tracks(client: GPExeClient) -> dict[str, Any]:
+    """Scarica i Tracks GPExe come risorsa separata, senza modificare Excel."""
+    raw_tracks = fetch_all_pages(client, TRACKS)
+    return {
+        "schema_version": 5,
+        "provider": "gpexe",
+        "resource": "tracks",
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+        "tracks": [dict(row) for row in raw_tracks],
+        "count": len(raw_tracks),
+    }
+
 @dataclass(frozen=True)
 class FullSyncEvent:
     step: str
@@ -255,6 +268,7 @@ def run_full_sync(
         "Team Sessions",
         "Dettagli Team Sessions",
         "Athlete Sessions",
+        "Tracks",
     )
     events: list[dict[str, Any]] = []
 
@@ -325,6 +339,16 @@ def run_full_sync(
         athlete_summary = {"requested": 0, "received": 0, "inserted": 0, "updated": 0, "failed": 0}
     result["steps"]["athlete_sessions"] = athlete_summary
     emit(4, "success", "Athlete Sessions sincronizzate.")
+
+    emit(5, "running", "Sincronizzazione Tracks...")
+    try:
+        tracks_payload = sync_tracks(client)
+        tracks_count = database.replace_tracks(tracks_payload)
+        result["steps"]["tracks"] = {"received": tracks_count, "failed": 0}
+        emit(5, "success", "Tracks sincronizzati.")
+    except Exception as exc:
+        result["steps"]["tracks"] = {"received": 0, "failed": 1, "error": str(exc)}
+        emit(5, "warning", "Tracks non disponibili; pipeline principale completata.")
 
     result["completed_at"] = datetime.now(timezone.utc).isoformat()
     result["status"] = "success"

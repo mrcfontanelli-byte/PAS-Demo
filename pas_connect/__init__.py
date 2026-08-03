@@ -11,7 +11,7 @@ from .services import GPExeServices
 from .provider import GPExeAPIDataProvider
 from .storage import SnapshotStore
 from .database import PASConnectDatabase, ReferenceImportResult, SessionImportResult, SessionDetailImportResult, AthleteSessionImportResult
-from .sync import sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, FullSyncEvent
+from .sync import sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, sync_tracks, run_full_sync, FullSyncEvent
 from .sync import SyncPlan, build_default_sync_plan
 
 __all__ = [
@@ -31,6 +31,7 @@ __all__ = [
     "sync_team_sessions",
     "sync_team_session_details",
     "sync_athlete_session_details",
+    "sync_tracks",
     "run_full_sync",
     "FullSyncEvent",
     "SyncPlan",

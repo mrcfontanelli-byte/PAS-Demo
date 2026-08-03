@@ -40,5 +40,5 @@ def test_complete_pipeline_persists_all_current_resources(tmp_path: Path):
     assert database.team_session_count() == 1
     assert database.team_session_detail_count() == 1
     assert database.athlete_session_detail_count() == 1
-    assert events[-1].step == "Athlete Sessions"
-    assert events[-1].status == "success"
+    assert events[-1].step == "Tracks"
+    assert events[-1].status == "warning"

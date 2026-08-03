@@ -1,3 +1,14 @@
+# Changelog
+
+## 4.1.0 - 2026-08-03
+
+- Collegato il database separato PAS Connect al Data Provider GPExe del PAS Core.
+- Aggiunta selezione multipla delle TeamSession API da usare nelle analisi.
+- Convertite righe atleta e metriche GPExe nello schema prestativo PAS esistente.
+- Aggiunta sincronizzazione e persistenza dei Tracks.
+- Mantenuti invariati database Excel, calcoli, dashboard e report.
+- Conservato Excel come sorgente predefinita e fallback sicuro.
+
 # v4.0.0 — GPExe Foundation
 
 - Aggiunto `GPExeClient` resiliente con autenticazione `/auth/token` e gestione token.

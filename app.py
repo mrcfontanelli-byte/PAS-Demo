@@ -59,6 +59,7 @@ from modules.charts import (
     compact_player_day_bars,
 )
 from pas_connect import GPExeClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync
+from pas_connect.pas_bridge import available_sessions
 from pas_connect.endpoints import TEAMS
 
 
@@ -2864,28 +2865,34 @@ with database_column:
             excel_path = excel_provider.resolve_default_source(base_dir)
             database_excel_source = str(excel_path)
 
-            if using_gpexe and uploaded_database is not None:
+            gpexe_api_database = PASConnectDatabase.default(base_dir).path
+            gpexe_api_ready = gpexe_api_database.is_file() and bool(available_sessions(gpexe_api_database))
+            prefer_gpexe_api = st.session_state.get("pas_gpexe_input_mode", "API sincronizzata") == "API sincronizzata"
+            if using_gpexe and prefer_gpexe_api and gpexe_api_ready:
+                database_path = gpexe_api_database
+                selected_api_sessions = st.session_state.get("pas_gpexe_active_session_ids", [])
+                gpexe_source = {
+                    "kind": "gpexe_api",
+                    "database_path": gpexe_api_database,
+                    "session_ids": selected_api_sessions,
+                }
+                raw = data_provider.load_performance_data(gpexe_source, source_name=gpexe_api_database.name)
+                match_source = data_provider.load_match_analysis_data(gpexe_source, source_name=gpexe_api_database.name)
+                report_source = data_provider.load_report_data(gpexe_source, source_name=gpexe_api_database.name)
+                database_source_label = "GPExe API sincronizzata"
+            elif using_gpexe and uploaded_database is not None:
                 database_path = None
                 gpexe_source = uploaded_database.getvalue()
-                raw = data_provider.load_performance_data(
-                    gpexe_source,
-                    source_name=uploaded_database.name,
-                )
-                match_source = data_provider.load_match_analysis_data(
-                    gpexe_source,
-                    source_name=uploaded_database.name,
-                )
-                report_source = data_provider.load_report_data(
-                    gpexe_source,
-                    source_name=uploaded_database.name,
-                )
+                raw = data_provider.load_performance_data(gpexe_source, source_name=uploaded_database.name)
+                match_source = data_provider.load_match_analysis_data(gpexe_source, source_name=uploaded_database.name)
+                report_source = data_provider.load_report_data(gpexe_source, source_name=uploaded_database.name)
                 database_source_label = "Export GPExe caricato"
             elif using_gpexe:
                 database_path = excel_path
                 raw = excel_provider.load_performance_data(database_excel_source, source_name=excel_path.name)
                 match_source = excel_provider.load_match_analysis_data(database_excel_source, source_name=excel_path.name)
                 report_source = excel_provider.load_report_data(database_excel_source, source_name=excel_path.name)
-                database_source_label = "Fallback Excel · carica un export GPExe"
+                database_source_label = "Fallback Excel · sincronizza GPExe o carica un export"
             elif uploaded_database is not None:
                 database_path = None
                 database_excel_source = uploaded_database.getvalue()
@@ -2981,7 +2988,7 @@ with settings_column:
             format_func=provider_labels.get,
             key="pas_data_source",
             help=(
-                "Excel resta la sorgente predefinita. Seleziona GPExe e carica un export CSV, XLS/XLSX o JSON per usare i dati della sessione."
+                "Excel resta la sorgente predefinita. GPExe può usare le sessioni API sincronizzate oppure un export."
             ),
         )
         current_selection = resolve_data_provider(selected_provider_id)
@@ -2991,6 +2998,34 @@ with settings_column:
             st.caption(current_selection.effective.status_message)
 
         if selected_provider_id == "gpexe":
+            st.radio(
+                "Origine GPExe",
+                options=("API sincronizzata", "File export"),
+                horizontal=True,
+                key="pas_gpexe_input_mode",
+                help="La modalità API usa il database PAS Connect separato; il file Excel incluso resta invariato.",
+            )
+            api_database_path = PASConnectDatabase.default(base_dir).path
+            api_sessions = available_sessions(api_database_path)
+            if st.session_state.get("pas_gpexe_input_mode") == "API sincronizzata":
+                if api_sessions:
+                    session_by_id = {int(item["provider_session_id"]): item for item in api_sessions}
+                    session_options = tuple(session_by_id)
+                    defaults = [sid for sid in st.session_state.get("pas_gpexe_active_session_ids", []) if sid in session_by_id]
+                    selected_ids = st.multiselect(
+                        "TeamSession attive nel PAS",
+                        options=session_options,
+                        default=defaults,
+                        format_func=lambda sid: (
+                            f"{str(session_by_id[sid].get('start_timestamp') or '')[:10]} · "
+                            f"{session_by_id[sid].get('session_name') or sid}"
+                        ),
+                        key="pas_gpexe_active_session_ids",
+                        help="Senza selezione vengono utilizzate tutte le TeamSession sincronizzate.",
+                    )
+                    st.success(f"GPExe API disponibile: {len(api_sessions)} TeamSession · {len(selected_ids) or len(api_sessions)} attive.")
+                else:
+                    st.info("Esegui una sincronizzazione completa GPExe per rendere disponibili le TeamSession nel PAS.")
             gpexe_export = st.file_uploader(
                 "Carica export GPExe",
                 type=["csv", "xlsx", "xls", "json"],
@@ -3000,9 +3035,9 @@ with settings_column:
                 ),
                 key="pas_gpexe_export_upload",
             )
-            if gpexe_export is None:
+            if gpexe_export is None and st.session_state.get("pas_gpexe_input_mode") == "File export":
                 st.info("Nessun export GPExe caricato: il PAS continua a utilizzare Excel.")
-            elif using_gpexe and database_source_label == "Export GPExe caricato":
+            elif gpexe_export is not None and using_gpexe and database_source_label == "Export GPExe caricato":
                 st.success(
                     f"Export GPExe attivo: {gpexe_export.name} · "
                     f"{database_info['rows']} righe importate."
@@ -3010,8 +3045,8 @@ with settings_column:
 
         st.markdown("##### Connessione GPExe")
         st.caption(
-            "Puoi usare un export GPExe dal pannello Database oppure configurare la connessione API. "
-            "Excel resta la sorgente dati attiva per Drills e Forecast."
+            "Puoi sincronizzare le TeamSession API e usarle direttamente nel PAS, oppure caricare un export. "
+            "Excel resta la sorgente dati attiva per Drills e Forecast e non viene modificato."
         )
 
         is_gpexe_connected = bool(st.session_state.get("pas_gpexe_connected", False))
@@ -3187,12 +3222,14 @@ with settings_column:
                     ses = full_result["steps"]["team_sessions"]
                     det = full_result["steps"]["team_session_details"]
                     ath = full_result["steps"]["athlete_sessions"]
+                    tracks = full_result["steps"].get("tracks", {})
                     st.success(
                         "Sincronizzazione completa: "
                         f"{ref_counts.get('athletes', 0)} atleti · "
                         f"{ses.get('received', 0)} Team Sessions · "
                         f"{det.get('received', 0)} dettagli sessione · "
-                        f"{ath.get('received', 0)} Athlete Sessions."
+                        f"{ath.get('received', 0)} Athlete Sessions · "
+                        f"{tracks.get('received', 0)} Tracks."
                     )
                 except Exception as exc:
                     st.error(f"Sincronizzazione completa GPExe non riuscita: {exc}")

@@ -198,14 +198,17 @@ class ExcelProvider(PASDataProvider):
 
 @dataclass(frozen=True)
 class GPExeProvider(PASDataProvider):
-    """Provider operativo per export GPExe CSV, XLS/XLSX e JSON."""
+    """Provider GPExe per export oppure database API sincronizzato da PAS Connect."""
 
     provider_id: str = "gpexe"
     display_name: str = "GPExe"
 
     def resolve_default_source(self, base_dir: Path) -> Any:
+        api_database = base_dir / ".pas_data" / "pas_connect.sqlite3"
+        if api_database.is_file():
+            return api_database
         raise DataProviderError(
-            "Seleziona un export GPExe CSV, XLS, XLSX o JSON nel pannello Database."
+            "Sincronizza GPExe tramite PAS Connect oppure carica un export GPExe."
         )
 
     def load_performance_data(
@@ -217,6 +220,33 @@ class GPExeProvider(PASDataProvider):
     ) -> pd.DataFrame:
         from modules.config import PLAYERS_HELLAS
         from modules.gpexe_import import import_gpexe_file
+
+        api_session_ids = None
+        api_source = source
+        if isinstance(source, Mapping) and source.get("kind") == "gpexe_api":
+            api_source = source.get("database_path")
+            api_session_ids = source.get("session_ids")
+        source_path = Path(api_source) if isinstance(api_source, (str, Path)) else None
+        if source_path is not None and source_path.suffix.lower() in {".sqlite", ".sqlite3", ".db"}:
+            from pas_connect.pas_bridge import load_pas_performance_frame
+            frame = load_pas_performance_frame(source_path, session_ids=api_session_ids)
+            role_mapping = {
+                "midfileder": "Midfielder", "midfielder": "Midfielder",
+                "central midfielder": "Midfielder", "forward": "Forward",
+                "foward": "Forward", "center back": "Centre Back",
+                "centre back": "Centre Back", "wing backs": "Wing Back",
+                "wing back": "Wing Back", "side back": "Side Back",
+                "full back": "Side Back", "fullback": "Side Back",
+                "playmaker": "Play", "play": "Play", "goalkeeper": "Goalkeeper",
+            }
+            frame["Role Clean"] = frame["Role"].map(
+                lambda value: role_mapping.get(str(value).strip().lower(), str(value).strip().title())
+            )
+            if filter_configured_roster:
+                filtered = frame[frame["Athlete"].isin(PLAYERS_HELLAS)].copy()
+                if not filtered.empty:
+                    frame = filtered
+            return frame.reset_index(drop=True)
 
         role_mapping = {
             "midfileder": "Midfielder", "midfielder": "Midfielder",
@@ -290,7 +320,7 @@ _PROVIDER_DESCRIPTORS: dict[str, ProviderDescriptor] = {
         provider_id="gpexe",
         display_name="GPExe",
         operational=True,
-        status_message="Sorgente operativa: export GPExe",
+        status_message="Sorgente operativa: GPExe API / export",
     ),
 }
 
