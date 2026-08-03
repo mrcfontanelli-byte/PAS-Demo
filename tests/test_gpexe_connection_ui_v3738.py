@@ -31,7 +31,7 @@ def test_gpexe_client_authenticates_then_reads_teams_without_network():
 
 def test_settings_exposes_connection_test_and_keeps_excel_active():
     app = Path("app.py").read_text(encoding="utf-8")
-    assert "Test connessione GPExe" in app
+    assert "Connetti a GPExe" in app
     assert "Excel resta la sorgente dati attiva" in app
     assert "pas_gpexe_runtime_token" in app
     assert "App settings → Secrets" in app

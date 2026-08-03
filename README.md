@@ -1,10 +1,18 @@
-## Versione 3.7.38
+## Versione 3.7.39
 
 ### Ripristino tema rosso PAS
 - Colore primario Streamlit riportato a `#D71920`.
 - Nessuna modifica a funzioni, dati o architettura PAS Connect.
 
 ## Versione 3.7.36
+
+### GPExe Runtime Connection v3.7.39
+
+- Il comando **Connetti a GPExe** autentica e verifica l'accesso Teams.
+- Lo stato **Connesso / Non connesso** è visibile nel pannello Settings.
+- Token e stato della connessione restano esclusivamente nella sessione runtime.
+- È disponibile il comando **Disconnetti GPExe**.
+- Excel resta la sorgente dati operativa: nessuna sincronizzazione viene eseguita.
 
 ### GPExe Connection Test v3.7.38
 

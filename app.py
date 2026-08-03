@@ -2943,9 +2943,22 @@ with settings_column:
         st.divider()
         st.markdown("#### PAS Connect · GPExe")
         st.caption(
-            "Testa autenticazione e accesso alle API. "
-            "Excel resta la sorgente dati attiva in questa release."
+            "Configura la connessione con GPExe. In questa fase sono disponibili "
+            "autenticazione e verifica della connettività; Excel resta la sorgente dati attiva."
         )
+
+        is_gpexe_connected = bool(st.session_state.get("pas_gpexe_connected", False))
+        if is_gpexe_connected:
+            connected_team_count = st.session_state.get("pas_gpexe_team_count")
+            connected_base_url = st.session_state.get("pas_gpexe_connected_base_url", "")
+            status_message = "Connesso a GPExe"
+            if connected_team_count is not None:
+                status_message += f" · Team rilevati: {connected_team_count}"
+            if connected_base_url:
+                status_message += f" · {connected_base_url}"
+            st.success(status_message)
+        else:
+            st.info("Stato connessione: non connesso")
 
         try:
             gpexe_secrets = dict(st.secrets.get("gpexe", {}))
@@ -2990,8 +3003,8 @@ with settings_column:
             )
 
         if st.button(
-            "Test connessione GPExe",
-            key="pas_gpexe_test_connection",
+            "Connetti a GPExe",
+            key="pas_gpexe_connect",
             use_container_width=True,
         ):
             try:
@@ -3005,9 +3018,9 @@ with settings_column:
                 )
                 config.validate(require_credentials=True)
                 client = GPExeClient(config)
-                if not client.token:
+                runtime_token = client.token
+                if not runtime_token:
                     runtime_token = client.authenticate()
-                    st.session_state["pas_gpexe_runtime_token"] = runtime_token
 
                 teams_response = client.request(
                     TEAMS,
@@ -3028,12 +3041,39 @@ with settings_column:
                 elif isinstance(teams_response, list):
                     team_count = len(teams_response)
 
-                message = "Connessione GPExe riuscita e accesso Teams verificato."
-                if team_count is not None:
-                    message += f" Team rilevati: {team_count}."
-                st.success(message)
+                st.session_state["pas_gpexe_runtime_token"] = runtime_token
+                st.session_state["pas_gpexe_connected"] = True
+                st.session_state["pas_gpexe_connected_base_url"] = config.base_url.rstrip("/")
+                st.session_state["pas_gpexe_team_count"] = team_count
+                st.session_state["pas_gpexe_connected_at"] = pd.Timestamp.now(tz="UTC").isoformat()
+                st.success("Connessione GPExe riuscita. Lo stato è mantenuto nella sessione corrente.")
+                st.rerun()
             except Exception as exc:
-                st.error(f"Test GPExe non riuscito: {exc}")
+                for state_key in (
+                    "pas_gpexe_runtime_token",
+                    "pas_gpexe_connected",
+                    "pas_gpexe_connected_base_url",
+                    "pas_gpexe_team_count",
+                    "pas_gpexe_connected_at",
+                ):
+                    st.session_state.pop(state_key, None)
+                st.error(f"Connessione GPExe non riuscita: {exc}")
+
+        if is_gpexe_connected:
+            if st.button(
+                "Disconnetti GPExe",
+                key="pas_gpexe_disconnect",
+                use_container_width=True,
+            ):
+                for state_key in (
+                    "pas_gpexe_runtime_token",
+                    "pas_gpexe_connected",
+                    "pas_gpexe_connected_base_url",
+                    "pas_gpexe_team_count",
+                    "pas_gpexe_connected_at",
+                ):
+                    st.session_state.pop(state_key, None)
+                st.rerun()
 
         with st.expander("Configurazione Streamlit Secrets", expanded=False):
             st.code(

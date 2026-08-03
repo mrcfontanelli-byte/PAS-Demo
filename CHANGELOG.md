@@ -1,3 +1,17 @@
+## [3.7.39] - 2026-08-03
+
+### Aggiunto
+- Connessione GPExe persistente nella sola sessione runtime.
+- Stato visibile **Connesso / Non connesso** nel pannello Settings.
+- Comandi **Connetti a GPExe** e **Disconnetti GPExe**.
+- Verifica dell'accesso Teams e memorizzazione runtime del numero di team rilevati.
+
+### Sicurezza
+- Token e credenziali non vengono scritti nei file o nel repository.
+
+### Invariato
+- Excel resta la sorgente dati operativa; nessuna sincronizzazione o modifica al database incluso.
+
 ## [3.7.38] - 2026-08-03
 
 ### Aggiunto
