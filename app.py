@@ -2856,6 +2856,10 @@ with database_column:
                     database_excel_source,
                     source_name=uploaded_database.name,
                 )
+                report_source = data_provider.load_report_data(
+                    database_excel_source,
+                    source_name=uploaded_database.name,
+                )
                 database_source_label = "File caricato"
             else:
                 database_path = data_provider.resolve_default_source(base_dir)
@@ -2865,6 +2869,10 @@ with database_column:
                     source_name=database_path.name,
                 )
                 match_source = data_provider.load_match_analysis_data(
+                    database_excel_source,
+                    source_name=database_path.name,
+                )
+                report_source = data_provider.load_report_data(
                     database_excel_source,
                     source_name=database_path.name,
                 )
@@ -4960,7 +4968,7 @@ if page == "📊 Period Load":
     )
 
     historical_max_speed_references = (
-        build_historical_max_speed_references(raw)
+        build_historical_max_speed_references(report_source)
     )
     period_max_speed_percentages = (
         build_max_speed_percentage_data(
@@ -8019,7 +8027,7 @@ if page == "⚽ Match Analysis":
         )
 
         match_historical_max_speed_references = (
-            build_historical_max_speed_references(raw)
+            build_historical_max_speed_references(report_source)
         )
         match_max_speed_percentages = (
             build_max_speed_percentage_data(
@@ -8615,8 +8623,8 @@ session_report_players_mode = st.sidebar.radio(
     ["Tutti i giocatori del giorno", "Solo giocatori selezionati"],
 )
 
-session_day_raw = raw[
-    raw["Date"].dt.normalize().eq(reference_ts.normalize())
+session_day_raw = report_source[
+    report_source["Date"].dt.normalize().eq(reference_ts.normalize())
 ].copy()
 
 session_full_training_raw = session_day_raw[
@@ -8654,7 +8662,7 @@ session_report_available_players = sorted(
 session_report_selected_players = session_report_available_players
 
 session_historical_max_speed_references = (
-    build_historical_max_speed_references(raw)
+    build_historical_max_speed_references(report_source)
 )
 
 if session_report_players_mode == "Solo giocatori selezionati":
@@ -9109,7 +9117,7 @@ metric_groups = {
 metric_reference_rows = []
 
 dashboard_historical_max_speed_references = (
-    build_historical_max_speed_references(raw)
+    build_historical_max_speed_references(report_source)
 )
 dashboard_player_max_speed_pct = max_speed_percentage_lookup(
     current_players,

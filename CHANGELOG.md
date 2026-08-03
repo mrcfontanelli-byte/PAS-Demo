@@ -1,3 +1,15 @@
+## v3.8.5
+
+### Modificato
+- La reportistica PAS riceve ora il dataset prestativo tramite il contratto dedicato del PAS Data Provider.
+- `ExcelProvider` resta il provider operativo e predefinito, preservando filtro rosa, contenuto e logica di caricamento esistenti.
+- `GPExeProvider` espone lo stesso punto di accesso Report ma rimane intenzionalmente non operativo.
+
+### Invariato
+- Nessun cambiamento a grafica, impaginazione, etichette, calcoli o contenuti dei report.
+- Nessun modulo utilizza ancora GPExe come sorgente operativa.
+- Database Excel incluso completamente invariato.
+
 ## v3.8.4
 
 ### Modificato

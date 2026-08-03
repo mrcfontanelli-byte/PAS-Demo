@@ -1,3 +1,7 @@
+## Versione 3.8.5
+
+La release 3.8.5 migra la reportistica PAS al Data Provider mantenendo Excel come sorgente predefinita. I report continuano a usare gli stessi dati, calcoli e componenti grafici della v3.8.4.
+
 ## Versione 3.8.4
 
 La release 3.8.4 migra Forecast al PAS Data Provider mantenendo Excel come sorgente predefinita. Nei report, le etichette restano centrate finché rientrano nella colonna; quando uscirebbero dai bordi vengono allineate a sinistra dall’inizio della barra colorata.
@@ -47,7 +51,7 @@ La release 3.8.4 migra Forecast al PAS Data Provider mantenendo Excel come sorge
 
 ### PAS
 
-**Versione corrente: 3.8.4**
+**Versione corrente: 3.8.5**
 
 ### GPExe Athlete Sessions (v3.7.44)
 
