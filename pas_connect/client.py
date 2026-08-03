@@ -16,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from .auth import authorization_header, build_token_payload, extract_token
+from .auth import authorization_header, build_token_payload, extract_auth_tokens
 from .config import GPExeConfig, normalize_gpexe_base_url
 from .endpoints import AUTH_TOKEN, Endpoint
 from .exceptions import APIRequestError, AuthenticationError, RateLimitError
@@ -42,6 +42,7 @@ class GPExeClient:
     transport: Transport = _urllib_transport
     sleep: Sleep = time.sleep
     _token: str = field(init=False, default="")
+    _refresh_token: str = field(init=False, default="")
 
     def __post_init__(self) -> None:
         self.config.validate(require_credentials=False)
@@ -55,37 +56,78 @@ class GPExeClient:
         self._token = ""
 
     def authenticate(self, *, force: bool = False) -> str:
-        """Ottiene un token provando i formati supportati dalle installazioni GPExe.
-
-        Alcune installazioni accettano ``application/x-www-form-urlencoded`` mentre
-        altre espongono lo stesso endpoint con payload JSON. Il client prova prima
-        il formato form (quello usato dall'istanza operativa) e usa JSON come
-        fallback di compatibilità.
-        """
+        """Autentica tramite la mutation GraphQL TokenAuth usata dal client GPExe."""
         if self._token and not force:
             return self._token
         payload = build_token_payload(self.config.username, self.config.password)
-        errors: list[str] = []
-        for mode in ("form", "json"):
-            try:
-                if mode == "form":
-                    response = self.request(AUTH_TOKEN, form_body=payload, authenticated=False)
-                else:
-                    response = self.request(AUTH_TOKEN, json_body=payload, authenticated=False)
-                self._token = extract_token(response)
-                return self._token
-            except (APIRequestError, AuthenticationError) as exc:
-                errors.append(f"{mode}: {exc}")
-        raise AuthenticationError(
-            "Autenticazione GPExe non riuscita. " + " | ".join(errors)
+        response = self.graphql(
+            payload["query"],
+            variables=payload["variables"],
+            operation_name=payload["operationName"],
+            authenticated=False,
         )
+        self._token, self._refresh_token, _ = extract_auth_tokens(response)
+        return self._token
+
+    @property
+    def refresh_token(self) -> str:
+        return self._refresh_token
 
     def test_connection(self) -> bool:
-        from .endpoints import TEAMS
         if not self._token:
             self.authenticate()
-        self.request(TEAMS, query={"page": 1, "page_size": 1})
+        response = self.graphql("query PASConnectionTest { __typename }", operation_name="PASConnectionTest")
+        data = response.get("data") if isinstance(response, Mapping) else None
+        if not isinstance(data, Mapping) or not data.get("__typename"):
+            raise APIRequestError("Test GraphQL GPExe non valido.")
         return True
+
+    def graphql(
+        self, query: str, *, variables: Mapping[str, object] | None = None,
+        operation_name: str | None = None, authenticated: bool = True,
+    ) -> Mapping[str, Any]:
+        if authenticated and not self._token:
+            self.authenticate()
+        payload: dict[str, Any] = {"query": query, "variables": dict(variables or {})}
+        if operation_name:
+            payload["operationName"] = operation_name
+        url = normalize_gpexe_base_url(self.config.base_url) + "/"
+        body = json.dumps(payload).encode("utf-8")
+        refreshed = False
+        attempts = 0
+        while True:
+            attempts += 1
+            headers = {"Accept": "application/json", "Content-Type": "application/json"}
+            if authenticated:
+                headers.update(authorization_header(self._token))
+            request = Request(url, data=body, headers=headers, method="POST")
+            status, raw, response_headers = self._send(request)
+            if status == 401 and authenticated and not refreshed and self.config.username and self.config.password:
+                self.authenticate(force=True)
+                refreshed = True
+                continue
+            if status == 429:
+                if attempts > self.config.max_retries:
+                    raise RateLimitError("Limite richieste GPExe raggiunto; riprovare più tardi.")
+                self.sleep(self._retry_delay(response_headers, attempts))
+                continue
+            if status in {408, 500, 502, 503, 504}:
+                if attempts > self.config.max_retries:
+                    raise APIRequestError(self._http_error_message(status, raw))
+                self.sleep(self._retry_delay(response_headers, attempts))
+                continue
+            if status == 401:
+                raise AuthenticationError("Credenziali o token GPExe non validi.")
+            if not 200 <= status < 300:
+                raise APIRequestError(self._http_error_message(status, raw))
+            decoded = self._decode(raw, status=status, headers=response_headers, url=url)
+            if not isinstance(decoded, Mapping):
+                raise APIRequestError("Risposta GraphQL GPExe non valida.")
+            errors = decoded.get("errors")
+            if errors:
+                message = "; ".join(str(e.get("message", e)) if isinstance(e, Mapping) else str(e) for e in errors)
+                raise APIRequestError(f"Errore GraphQL GPExe: {message}")
+            return decoded
 
     def request(
         self,

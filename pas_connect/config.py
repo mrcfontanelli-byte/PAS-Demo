@@ -15,7 +15,7 @@ def normalize_gpexe_base_url(value: str) -> str:
     """Normalizza l'indirizzo radice delle API senza rimuovere il prefisso /api.
 
     L'istanza GPExe fornita espone la documentazione e le REST API sotto
-    ``https://e15-ui.gpexe.com/api``. Sono rimossi soltanto spazi e slash
+    ``https://e15.gpexe.com/ui/v2/``. Sono rimossi soltanto spazi e slash
     finali, così gli endpoint ``/rest/v2/...`` vengono composti correttamente.
     """
     normalized = str(value or "").strip().rstrip("/")
@@ -39,7 +39,7 @@ class GPExeConfig:
     ``st.secrets`` o variabili d'ambiente.
     """
 
-    base_url: str = "https://e15-ui.gpexe.com/api"
+    base_url: str = "https://e15.gpexe.com/ui/v2/"
     username: str = ""
     password: str = ""
     token: str = ""
