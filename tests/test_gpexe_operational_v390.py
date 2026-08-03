@@ -3,7 +3,7 @@ from pathlib import Path
 from modules.data_provider import GPExeProvider, resolve_data_provider
 from modules.gpexe_import import import_gpexe_file
 
-FIXTURE = Path('/mnt/data/session_20260803-1723_full_training_20260519-1435.csv')
+FIXTURE = Path(__file__).resolve().parent / 'fixtures' / 'gpexe_full_training_sample.csv'
 
 
 def test_gpexe_is_operational():

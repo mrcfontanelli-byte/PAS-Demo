@@ -1,18 +1,15 @@
-## v3.9.0
-
-### Aggiunto
-- Provider GPExe operativo per export CSV, XLS/XLSX e JSON.
-- Riconoscimento automatico del separatore CSV, incluso il formato GPExe con `;`.
-- Normalizzazione dei metadati sessione e delle metriche GPS nello schema PAS.
-- Fallback temporaneo a Excel quando GPExe è selezionato ma non è stato caricato un export.
+## v3.9.1
 
 ### Modificato
-- Dettagli giocatori delle card Dashboard raccolti in una tendina chiusa per impostazione predefinita.
-- Controllo “Includi nel report PDF” reso più compatto e spostato sotto la tendina.
+- Spostato il caricamento degli export GPExe nel pannello **Settings → PAS Connect**.
+- Aggiunto stato esplicito per export GPExe attivo e fallback Excel in assenza di file.
+- Sostituito il controllo stretto delle card con la checkbox orizzontale **Aggiungi box plot al report**.
+- Mantenuti i dettagli giocatori nella tendina chiusa per impostazione predefinita.
 
-### Invariato
-- Database Excel incluso completamente invariato.
-- Calcoli e struttura dei report invariati.
+### Verificato
+- Import del CSV GPExe reale con separatore `;`.
+- Database Excel incluso invariato.
+- Calcoli, grafici e report non modificati.
 - Compatibilità Streamlit Cloud preservata.
 
 ## v3.8.9

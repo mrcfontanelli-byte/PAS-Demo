@@ -1,9 +1,23 @@
 PAS RELEASE MANIFEST
-Version: 3.9.0
-Source archive: PAS_DEMO_v3.8.8.zip
+Version: 3.9.1
+Source archive: PAS_DEMO_v3.9.0.zip
 Build date: 2026-08-03
 
 IMPLEMENTATION
-- Added isolated GPExe Import Engine for JSON, CSV and XLSX exports.
-- Added in-memory canonical mapping, row validation and controlled fallback error.
-- GPExe remains disconnected from PAS Core calculations and reports.
+- GPExe export upload moved to Settings -> PAS Connect.
+- GPExe CSV, XLS/XLSX and JSON imports remain validated and loaded in memory.
+- Excel fallback remains active when no valid GPExe export is loaded.
+- Dashboard player details remain collapsed by default.
+- Report option changed to the horizontal label "Aggiungi box plot al report" below the player details.
+
+UNCHANGED
+- PAS calculations and report generation logic.
+- Included Excel database contents.
+- Streamlit Cloud compatibility.
+
+VERIFICATION
+- All Python files compiled successfully.
+- Automated test suite: 74 passed.
+- validate_release.py: VALIDAZIONE OK.
+- Included Excel database SHA-256 unchanged:
+  9efa8e9ccfcb6bcff55b5f73407fc1b9e449c3a0633ee8f5a525d5a72d63010b

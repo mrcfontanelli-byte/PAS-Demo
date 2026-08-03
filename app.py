@@ -1036,17 +1036,15 @@ def render_reportable_chart(
 
 
 def render_compact_report_selector(report_group: str) -> None:
-    """Comando report discreto, mostrato una sola volta per gruppo."""
+    """Comando report discreto e orizzontale, una sola volta per gruppo."""
     if report_group in _report_selector_groups_rendered:
         return
     _report_selector_groups_rendered.add(report_group)
-    control_col, spacer_col = st.columns([0.42, 1.58], gap="small")
-    with control_col:
-        st.checkbox(
-            "Includi nel report PDF",
-            key=f"report_select_group_{report_group}",
-            help="Include nel report tutti i box plot del parametro.",
-        )
+    st.checkbox(
+        "Aggiungi box plot al report",
+        key=f"report_select_group_{report_group}",
+        help="Aggiunge al report tutti i box plot del parametro.",
+    )
 
 
 
@@ -2844,16 +2842,22 @@ with database_column:
         use_container_width=True,
     ):
         using_gpexe = provider_selection.requested.provider_id == "gpexe"
-        uploaded_database = st.file_uploader(
-            "Carica export GPExe" if using_gpexe else "Carica database Excel",
-            type=["csv", "xlsx", "xls", "json"] if using_gpexe else ["xlsx", "xls"],
-            help=(
-                "Carica un export completo GPExe della sessione. Senza file il PAS usa temporaneamente Excel."
-                if using_gpexe
-                else "Se carichi un file, il PAS lo usa per questa sessione. Altrimenti utilizza il database presente nella cartella."
-            ),
-            key="pas_primary_data_upload",
-        )
+        if using_gpexe:
+            uploaded_database = st.session_state.get("pas_gpexe_export_upload")
+            st.caption(
+                "L'export GPExe si carica da Settings → PAS Connect. "
+                "Senza un file valido il PAS usa temporaneamente Excel."
+            )
+        else:
+            uploaded_database = st.file_uploader(
+                "Carica database Excel",
+                type=["xlsx", "xls"],
+                help=(
+                    "Se carichi un file, il PAS lo usa per questa sessione. "
+                    "Altrimenti utilizza il database presente nella cartella."
+                ),
+                key="pas_primary_data_upload",
+            )
 
         try:
             excel_provider = get_data_provider("excel")
@@ -2985,6 +2989,24 @@ with settings_column:
             st.warning(current_selection.requested.status_message)
         else:
             st.caption(current_selection.effective.status_message)
+
+        if selected_provider_id == "gpexe":
+            gpexe_export = st.file_uploader(
+                "Carica export GPExe",
+                type=["csv", "xlsx", "xls", "json"],
+                help=(
+                    "Carica un export completo GPExe. Il file viene validato e "
+                    "utilizzato in memoria; il database Excel incluso non viene modificato."
+                ),
+                key="pas_gpexe_export_upload",
+            )
+            if gpexe_export is None:
+                st.info("Nessun export GPExe caricato: il PAS continua a utilizzare Excel.")
+            elif using_gpexe and database_source_label == "Export GPExe caricato":
+                st.success(
+                    f"Export GPExe attivo: {gpexe_export.name} · "
+                    f"{database_info['rows']} righe importate."
+                )
 
         st.markdown("##### Connessione GPExe")
         st.caption(
