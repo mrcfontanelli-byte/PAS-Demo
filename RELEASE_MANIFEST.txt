@@ -1,18 +1,9 @@
 PAS RELEASE MANIFEST
-Version: 3.8.8
-Source archive: PAS_DEMO_v3.8.7.zip
+Version: 3.8.9
+Source archive: PAS_DEMO_v3.8.8.zip
 Build date: 2026-08-03
 
 IMPLEMENTATION
-- Added isolated GPExe Mapping Layer with canonical PAS metric definitions.
-- Added controlled provider aliases, required-field validation and explicit unit conversions.
-- GPExe remains non-operational in PAS Core; Excel remains the effective provider.
-- No changes to calculations, graphics or reports.
-
-VERIFICATION
-- Python compilation: PASSED (62 files)
-- Automated tests: PASSED
-- Release validation: PASSED
-- Excel database unchanged: PASSED
-- Excel SHA-256: 9efa8e9ccfcb6bcff55b5f73407fc1b9e449c3a0633ee8f5a525d5a72d63010b
-- Streamlit Cloud compatibility: PRESERVED
+- Added isolated GPExe Import Engine for JSON, CSV and XLSX exports.
+- Added in-memory canonical mapping, row validation and controlled fallback error.
+- GPExe remains disconnected from PAS Core calculations and reports.

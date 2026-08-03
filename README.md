@@ -1,13 +1,9 @@
-## Versione 3.8.8
+## Versione 3.8.9
 
-La release 3.8.8 introduce il **GPExe Mapping Layer** senza attivare GPExe come sorgente operativa. Il nuovo livello definisce nomi canonici PAS, alias GPExe, unità attese, conversioni controllate e validazione dei campi obbligatori. Excel resta il provider effettivo e ogni calcolo, grafico e report mantiene il comportamento precedente.
+La release 3.8.9 introduce il **GPExe Import Engine** isolato dal PAS Core. Legge export JSON, CSV e XLSX, applica il Mapping Layer e restituisce dati canonici esclusivamente in memoria. I record non validi vengono scartati con avvisi controllati; se nessun record è utilizzabile viene segnalato il fallback a Excel. GPExe non alimenta ancora calcoli, grafici o report.
 
-- Aggiunto `modules/data_mapping.py`, indipendente da Streamlit e dal caricamento dati.
-- Definito il catalogo canonico delle metriche PAS principali e relativi alias GPExe.
-- Aggiunte conversioni esplicite km→m e m/s→km/h e controlli sui valori numerici.
-- Le metriche non riconosciute non entrano automaticamente nel PAS Core.
-- GPExe resta non operativo; nessun dato GPExe alimenta analisi o report.
 - Database Excel incluso completamente invariato.
+- Compatibilità Streamlit Cloud preservata.
 
 ## Versione 3.8.7
 
