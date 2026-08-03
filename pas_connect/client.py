@@ -10,7 +10,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from .auth import authorization_header, build_token_payload, extract_token
-from .config import GPExeConfig
+from .config import GPExeConfig, normalize_gpexe_base_url
 from .endpoints import AUTH_TOKEN, Endpoint
 from .exceptions import APIRequestError
 
@@ -54,7 +54,8 @@ class GPExeClient:
         authenticated: bool = True,
     ) -> Any:
         path = endpoint.format(**dict(path_values or {}))
-        url = f"{self.config.base_url.rstrip('/')}/{path.lstrip('/')}"
+        base_url = normalize_gpexe_base_url(self.config.base_url)
+        url = f"{base_url}/{path.lstrip('/')}"
         if query:
             clean_query = {
                 key: value for key, value in query.items() if value is not None

@@ -3034,9 +3034,9 @@ with settings_column:
 
         gpexe_base_url = st.text_input(
             "API base URL",
-            value=str(gpexe_secrets.get("base_url", "https://api.gsped.it")),
+            value=str(gpexe_secrets.get("base_url", "https://e15-ui.gpexe.com/api")),
             key="pas_gpexe_base_url",
-            help="Indirizzo base delle REST API GPExe/GSPED.",
+            help="Radice API dell’istanza GPExe. Per questa installazione: https://e15-ui.gpexe.com/api",
         )
         gpexe_auth_mode = st.radio(
             "Autenticazione",
@@ -3427,7 +3427,7 @@ with settings_column:
         with st.expander("Configurazione Streamlit Secrets", expanded=False):
             st.code(
                 '[gpexe]\n'
-                'base_url = "https://api.gsped.it"\n'
+                'base_url = "https://e15-ui.gpexe.com/api"\n'
                 'token = "INSERISCI_TOKEN"\n'
                 '# oppure username = "..." e password = "..."',
                 language="toml",

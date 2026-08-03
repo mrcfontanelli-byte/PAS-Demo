@@ -9,6 +9,21 @@ from urllib.parse import urlparse
 from .exceptions import ConfigurationError
 
 
+
+
+def normalize_gpexe_base_url(value: str) -> str:
+    """Normalizza l'indirizzo radice delle API senza rimuovere il prefisso /api.
+
+    L'istanza GPExe fornita espone la documentazione e le REST API sotto
+    ``https://e15-ui.gpexe.com/api``. Sono rimossi soltanto spazi e slash
+    finali, così gli endpoint ``/rest/v2/...`` vengono composti correttamente.
+    """
+    normalized = str(value or "").strip().rstrip("/")
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ConfigurationError("GPExe base_url non valido.")
+    return normalized
+
 class DataProvider(str, Enum):
     """Sorgenti dati previste dal PAS."""
 
@@ -24,7 +39,7 @@ class GPExeConfig:
     ``st.secrets`` o variabili d'ambiente.
     """
 
-    base_url: str = "https://api.gpexe.com"
+    base_url: str = "https://e15-ui.gpexe.com/api"
     username: str = ""
     password: str = ""
     token: str = ""
@@ -32,9 +47,7 @@ class GPExeConfig:
     verify_tls: bool = True
 
     def validate(self, require_credentials: bool = False) -> None:
-        parsed = urlparse(self.base_url)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ConfigurationError("GPExe base_url non valido.")
+        normalize_gpexe_base_url(self.base_url)
         if self.timeout_seconds <= 0:
             raise ConfigurationError("Il timeout GPExe deve essere positivo.")
         if require_credentials and not self.token and not (self.username and self.password):

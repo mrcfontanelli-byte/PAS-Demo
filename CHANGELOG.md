@@ -1,3 +1,18 @@
+## v3.9.2
+
+### Modificato
+- Configurato il GPExe API Connector sull’istanza fornita `https://e15-ui.gpexe.com/api`.
+- Normalizzata centralmente la base URL preservando il prefisso `/api` durante la composizione degli endpoint REST `/rest/v2/...`.
+- Aggiornati PAS Connect e l’esempio Streamlit Secrets con l’indirizzo dell’istanza reale.
+- Mantenuti autenticazione runtime tramite token oppure username/password, test connessione, recupero Team Sessions e sincronizzazioni già disponibili.
+
+### Verificato
+- Composizione degli endpoint Team e Team Sessions sull’istanza indicata.
+- Credenziali non persistite nei file del progetto.
+- Database Excel incluso invariato.
+- Calcoli, Dashboard, grafici e report non modificati.
+- Compatibilità Streamlit Cloud preservata.
+
 ## v3.9.1
 
 ### Modificato

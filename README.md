@@ -1,6 +1,6 @@
-## Versione 3.9.1
+## Versione 3.9.2
 
-La release 3.9.1 completa il flusso operativo GPExe nel pannello **PAS Connect** e rifinisce le card della Dashboard. Se GPExe è selezionato, l'export CSV, XLS/XLSX o JSON si carica direttamente da PAS Connect, viene validato e utilizzato esclusivamente in memoria. In assenza di un file valido il PAS continua a utilizzare Excel; Drills e Forecast restano alimentati dal database Excel incluso.
+La release 3.9.2 completa il flusso operativo GPExe nel pannello **PAS Connect** e rifinisce le card della Dashboard. Se GPExe è selezionato, l'export CSV, XLS/XLSX o JSON si carica direttamente da PAS Connect, viene validato e utilizzato esclusivamente in memoria. In assenza di un file valido il PAS continua a utilizzare Excel; Drills e Forecast restano alimentati dal database Excel incluso.
 
 Nella Dashboard, i dettagli di tutti i giocatori restano raccolti nella tendina **Visualizza dettagli giocatori**, chiusa per impostazione predefinita. Il controllo report usa ora tutta la larghezza disponibile ed è mostrato in una singola riga con l'etichetta **Aggiungi box plot al report**.
 

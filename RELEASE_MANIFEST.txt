@@ -1,5 +1,5 @@
 PAS RELEASE MANIFEST
-Version: 3.9.1
+Version: 3.9.2
 Source archive: PAS_DEMO_v3.9.0.zip
 Build date: 2026-08-03
 
