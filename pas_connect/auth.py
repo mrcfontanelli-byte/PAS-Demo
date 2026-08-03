@@ -13,10 +13,19 @@ def build_token_payload(username: str, password: str) -> dict[str, str]:
 
 
 def extract_token(payload: Mapping[str, Any]) -> str:
-    token = payload.get("token")
-    if not isinstance(token, str) or not token.strip():
-        raise AuthenticationError("La risposta GPExe non contiene un token valido.")
-    return token.strip()
+    if not isinstance(payload, Mapping):
+        raise AuthenticationError("La risposta GPExe di autenticazione non è un oggetto valido.")
+    for key in ("token", "access_token", "key"):
+        token = payload.get(key)
+        if isinstance(token, str) and token.strip():
+            return token.strip()
+    data = payload.get("data")
+    if isinstance(data, Mapping):
+        for key in ("token", "access_token", "key"):
+            token = data.get(key)
+            if isinstance(token, str) and token.strip():
+                return token.strip()
+    raise AuthenticationError("La risposta GPExe non contiene un token valido.")
 
 
 def authorization_header(token: str) -> dict[str, str]:

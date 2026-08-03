@@ -55,12 +55,30 @@ class GPExeClient:
         self._token = ""
 
     def authenticate(self, *, force: bool = False) -> str:
+        """Ottiene un token provando i formati supportati dalle installazioni GPExe.
+
+        Alcune installazioni accettano ``application/x-www-form-urlencoded`` mentre
+        altre espongono lo stesso endpoint con payload JSON. Il client prova prima
+        il formato form (quello usato dall'istanza operativa) e usa JSON come
+        fallback di compatibilità.
+        """
         if self._token and not force:
             return self._token
         payload = build_token_payload(self.config.username, self.config.password)
-        response = self.request(AUTH_TOKEN, json_body=payload, authenticated=False)
-        self._token = extract_token(response)
-        return self._token
+        errors: list[str] = []
+        for mode in ("form", "json"):
+            try:
+                if mode == "form":
+                    response = self.request(AUTH_TOKEN, form_body=payload, authenticated=False)
+                else:
+                    response = self.request(AUTH_TOKEN, json_body=payload, authenticated=False)
+                self._token = extract_token(response)
+                return self._token
+            except (APIRequestError, AuthenticationError) as exc:
+                errors.append(f"{mode}: {exc}")
+        raise AuthenticationError(
+            "Autenticazione GPExe non riuscita. " + " | ".join(errors)
+        )
 
     def test_connection(self) -> bool:
         from .endpoints import TEAMS
@@ -76,12 +94,20 @@ class GPExeClient:
         path_values: Mapping[str, object] | None = None,
         query: Mapping[str, object] | None = None,
         json_body: Mapping[str, object] | None = None,
+        form_body: Mapping[str, object] | None = None,
         authenticated: bool = True,
     ) -> Any:
         if authenticated and not self._token:
             self.authenticate()
         url = self._build_url(endpoint, path_values=path_values, query=query)
-        body = json.dumps(json_body).encode("utf-8") if json_body is not None else None
+        if json_body is not None and form_body is not None:
+            raise ValueError("Usare json_body oppure form_body, non entrambi.")
+        if json_body is not None:
+            body = json.dumps(json_body).encode("utf-8")
+        elif form_body is not None:
+            body = urlencode({k: str(v) for k, v in form_body.items()}).encode("utf-8")
+        else:
+            body = None
         refreshed = False
         attempts = 0
         while True:
@@ -89,6 +115,8 @@ class GPExeClient:
             headers = {"Accept": "application/json"}
             if json_body is not None:
                 headers["Content-Type"] = "application/json"
+            elif form_body is not None:
+                headers["Content-Type"] = "application/x-www-form-urlencoded"
             if authenticated:
                 headers.update(authorization_header(self._token))
             request = Request(url, data=body, headers=headers, method=endpoint.method)
@@ -117,7 +145,7 @@ class GPExeClient:
                 raise AuthenticationError("Credenziali o token GPExe non validi.")
             if not 200 <= status < 300:
                 raise APIRequestError(self._http_error_message(status, raw))
-            return self._decode(raw)
+            return self._decode(raw, status=status, headers=response_headers, url=url)
 
     def _build_url(self, endpoint: Endpoint, *, path_values=None, query=None) -> str:
         path = endpoint.format(**dict(path_values or {}))
@@ -154,13 +182,30 @@ class GPExeClient:
         return min(base * (2 ** max(0, attempt - 1)), self.config.max_retry_delay_seconds)
 
     @staticmethod
-    def _decode(raw: bytes) -> Any:
+    def _decode(
+        raw: bytes,
+        *,
+        status: int | None = None,
+        headers: Mapping[str, str] | None = None,
+        url: str = "",
+    ) -> Any:
         if not raw:
             return None
         try:
             return json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise APIRequestError("Risposta GPExe non JSON o non valida.") from exc
+            content_type = next(
+                (str(v) for k, v in dict(headers or {}).items() if k.lower() == "content-type"),
+                "sconosciuto",
+            )
+            preview = raw.decode("utf-8", errors="replace")
+            preview = " ".join(preview.split())[:180]
+            safe_url = url.split("?", 1)[0]
+            detail = (
+                f"HTTP {status}; Content-Type {content_type}; URL {safe_url}; "
+                f"anteprima: {preview or '[vuota]'}"
+            )
+            raise APIRequestError(f"Risposta GPExe non JSON o non valida ({detail}).") from exc
 
     @staticmethod
     def _http_error_message(status: int, raw: bytes) -> str:
