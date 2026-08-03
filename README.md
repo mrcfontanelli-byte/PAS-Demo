@@ -1,3 +1,14 @@
+## Versione 3.8.8
+
+La release 3.8.8 introduce il **GPExe Mapping Layer** senza attivare GPExe come sorgente operativa. Il nuovo livello definisce nomi canonici PAS, alias GPExe, unità attese, conversioni controllate e validazione dei campi obbligatori. Excel resta il provider effettivo e ogni calcolo, grafico e report mantiene il comportamento precedente.
+
+- Aggiunto `modules/data_mapping.py`, indipendente da Streamlit e dal caricamento dati.
+- Definito il catalogo canonico delle metriche PAS principali e relativi alias GPExe.
+- Aggiunte conversioni esplicite km→m e m/s→km/h e controlli sui valori numerici.
+- Le metriche non riconosciute non entrano automaticamente nel PAS Core.
+- GPExe resta non operativo; nessun dato GPExe alimenta analisi o report.
+- Database Excel incluso completamente invariato.
+
 ## Versione 3.8.7
 
 La release 3.8.7 completa l'architettura del PAS Data Provider con un catalogo centralizzato delle sorgenti, metadati comuni e una risoluzione esplicita tra provider richiesto e provider effettivo. Excel resta l'unica sorgente operativa; selezionando GPExe il PAS registra la scelta, applica un fallback controllato a Excel e mantiene invariati dati e risultati.
@@ -70,7 +81,7 @@ La release 3.8.4 migra Forecast al PAS Data Provider mantenendo Excel come sorge
 
 ### PAS
 
-**Versione corrente: 3.8.7**
+**Versione corrente: 3.8.8**
 
 ### GPExe Athlete Sessions (v3.7.44)
 

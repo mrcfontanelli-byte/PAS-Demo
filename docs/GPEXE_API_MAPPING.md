@@ -32,3 +32,7 @@ speed zones dopo verifica sulle soglie reali dell'istanza GPExe.
 
 ## Athlete Session detail (v3.7.44)
 `GET /rest/v2/session/athlete/{id}/` viene mappato conservando ID, sessione, atleta, drill, track, timing, stato, metriche scalari e collezioni di zone. Nuovi campi del provider restano disponibili nel payload grezzo.
+
+
+## Mapping Layer v3.8.8
+`modules/data_mapping.py` contiene il catalogo canonico delle metriche PAS, gli alias provider, le unità attese e conversioni esplicite. Il mapping è isolato e non alimenta ancora il PAS Core. Label sconosciute vengono ignorate, valori mancanti restano nulli e unità non supportate producono un errore di validazione.

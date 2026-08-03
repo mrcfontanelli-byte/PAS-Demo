@@ -1,18 +1,17 @@
 PAS RELEASE MANIFEST
-Version: 3.8.7
-Source archive: PAS_DEMO_v3.8.5.zip
+Version: 3.8.8
+Source archive: PAS_DEMO_v3.8.7.zip
 Build date: 2026-08-03
 
 IMPLEMENTATION
-- PAS Connect data-source selector added.
-- Excel remains the default and operational source.
-- GPExe is selectable but explicitly not operational in PAS Core.
-- Report value and percentage labels align left only when centered text would cross the left column boundary.
-- Team Average and Total Match enlarged fonts preserved.
+- Added isolated GPExe Mapping Layer with canonical PAS metric definitions.
+- Added controlled provider aliases, required-field validation and explicit unit conversions.
+- GPExe remains non-operational in PAS Core; Excel remains the effective provider.
+- No changes to calculations, graphics or reports.
 
 VERIFICATION
-- Python compilation: PASSED (59 files)
-- Automated tests: PASSED (62/62)
+- Python compilation: PASSED (62 files)
+- Automated tests: PASSED
 - Release validation: PASSED
 - Excel database unchanged: PASSED
 - Excel SHA-256: 9efa8e9ccfcb6bcff55b5f73407fc1b9e449c3a0633ee8f5a525d5a72d63010b

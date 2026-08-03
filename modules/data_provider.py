@@ -1,6 +1,6 @@
 """Livello unico di accesso ai dati del PAS.
 
-La release 3.8.7 completa il livello di orchestrazione dei provider. Excel resta
+La release 3.8.8 completa il livello di orchestrazione dei provider. Excel resta
 la sorgente operativa predefinita; GPExe è registrato nello stesso catalogo ma
 non è ancora operativo. Dashboard, Drills, Match Analysis, Forecast e Report
 usano sempre il provider effettivo risolto centralmente.
@@ -198,7 +198,7 @@ class ExcelProvider(PASDataProvider):
 
 @dataclass(frozen=True)
 class GPExeProvider(PASDataProvider):
-    """Provider GPExe registrato, intenzionalmente non attivo nella v3.8.7."""
+    """Provider GPExe registrato, intenzionalmente non attivo nella v3.8.8."""
 
     provider_id: str = "gpexe"
     display_name: str = "GPExe"
