@@ -34,7 +34,7 @@ from modules.data_loader import (
     aggregate_player_day,
     database_summary,
 )
-from modules.data_provider import get_data_provider
+from modules.data_provider import get_available_data_providers, resolve_data_provider
 from modules.statistics_engine import (
     descriptive_statistics,
     value_against_reference,
@@ -2824,7 +2824,10 @@ if _sidebar_logo.exists():
 st.sidebar.markdown("**PAS** · Performance Analysis System")
 st.sidebar.caption("Hellas Verona FC")
 
-data_provider = get_data_provider()
+provider_catalog = get_available_data_providers()
+requested_provider_id = st.session_state.get("pas_data_source", "excel")
+provider_selection = resolve_data_provider(requested_provider_id)
+data_provider = provider_selection.provider
 
 database_column, settings_column = st.sidebar.columns(2, gap="small")
 
@@ -2957,23 +2960,24 @@ with settings_column:
 
         st.divider()
         st.markdown("#### PAS Connect")
-        selected_data_source = st.selectbox(
+        provider_ids = tuple(item.provider_id for item in provider_catalog)
+        provider_labels = {item.provider_id: item.display_name for item in provider_catalog}
+        selected_provider_id = st.selectbox(
             "Sorgente dati",
-            options=("Excel", "GPExe"),
-            index=0,
+            options=provider_ids,
+            index=provider_ids.index(provider_selection.requested.provider_id),
+            format_func=provider_labels.get,
             key="pas_data_source",
             help=(
                 "Excel è la sorgente operativa predefinita. "
-                "GPExe è già presente nell'infrastruttura ma non è ancora operativo nel PAS Core."
+                "GPExe è registrato nell'infrastruttura ma non è ancora operativo nel PAS Core."
             ),
         )
-        if selected_data_source == "GPExe":
-            st.warning(
-                "GPExe non è ancora operativo come sorgente dati. "
-                "Il PAS continua a utilizzare Excel."
-            )
+        current_selection = resolve_data_provider(selected_provider_id)
+        if current_selection.fallback_applied:
+            st.warning(current_selection.requested.status_message)
         else:
-            st.caption("Sorgente operativa: Excel")
+            st.caption(current_selection.effective.status_message)
 
         st.markdown("##### Connessione GPExe")
         st.caption(

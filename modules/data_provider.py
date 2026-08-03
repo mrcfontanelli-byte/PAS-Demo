@@ -1,8 +1,9 @@
 """Livello unico di accesso ai dati del PAS.
 
-La release 3.8.6 mantiene Excel come sorgente operativa predefinita. Il provider
-GPExe è predisposto come contratto architetturale, ma non è ancora una sorgente
-operativa. Dashboard, Drills, Match Analysis, Forecast e Report usano il provider.
+La release 3.8.7 completa il livello di orchestrazione dei provider. Excel resta
+la sorgente operativa predefinita; GPExe è registrato nello stesso catalogo ma
+non è ancora operativo. Dashboard, Drills, Match Analysis, Forecast e Report
+usano sempre il provider effettivo risolto centralmente.
 """
 from __future__ import annotations
 
@@ -21,6 +22,26 @@ class DataProviderError(RuntimeError):
 
 class DataProviderNotReadyError(DataProviderError):
     """Provider presente nell'architettura ma non ancora operativo nel PAS Core."""
+
+
+@dataclass(frozen=True)
+class ProviderDescriptor:
+    """Metadati stabili esposti alla UI senza istanziare logiche specifiche."""
+
+    provider_id: str
+    display_name: str
+    operational: bool
+    status_message: str
+
+
+@dataclass(frozen=True)
+class ProviderSelection:
+    """Risultato della selezione: provider richiesto, effettivo e fallback."""
+
+    requested: ProviderDescriptor
+    effective: ProviderDescriptor
+    provider: "PASDataProvider"
+    fallback_applied: bool
 
 
 class PASDataProvider(ABC):
@@ -177,7 +198,7 @@ class ExcelProvider(PASDataProvider):
 
 @dataclass(frozen=True)
 class GPExeProvider(PASDataProvider):
-    """Provider GPExe predisposto, intenzionalmente non attivo nella v3.8.6."""
+    """Provider GPExe registrato, intenzionalmente non attivo nella v3.8.7."""
 
     provider_id: str = "gpexe"
     display_name: str = "GPExe"
@@ -239,12 +260,70 @@ class GPExeProvider(PASDataProvider):
 
 DEFAULT_PROVIDER_ID = "excel"
 
+_PROVIDER_TYPES: dict[str, type[PASDataProvider]] = {
+    "excel": ExcelProvider,
+    "gpexe": GPExeProvider,
+}
+
+_PROVIDER_DESCRIPTORS: dict[str, ProviderDescriptor] = {
+    "excel": ProviderDescriptor(
+        provider_id="excel",
+        display_name="Excel",
+        operational=True,
+        status_message="Sorgente operativa: Excel",
+    ),
+    "gpexe": ProviderDescriptor(
+        provider_id="gpexe",
+        display_name="GPExe",
+        operational=False,
+        status_message=(
+            "GPExe non è ancora operativo come sorgente dati. "
+            "Il PAS continua a utilizzare Excel."
+        ),
+    ),
+}
+
+
+def normalize_provider_id(provider_id: str | None) -> str:
+    """Normalizza ID o nome visualizzato senza dipendere dalla UI Streamlit."""
+    normalized = str(provider_id or DEFAULT_PROVIDER_ID).strip().lower()
+    aliases = {descriptor.display_name.lower(): key for key, descriptor in _PROVIDER_DESCRIPTORS.items()}
+    return aliases.get(normalized, normalized)
+
+
+def get_available_data_providers() -> tuple[ProviderDescriptor, ...]:
+    """Catalogo ordinato delle sorgenti disponibili nel PAS Connect."""
+    return tuple(_PROVIDER_DESCRIPTORS[key] for key in _PROVIDER_TYPES)
+
+
+def get_provider_descriptor(provider_id: str = DEFAULT_PROVIDER_ID) -> ProviderDescriptor:
+    normalized = normalize_provider_id(provider_id)
+    try:
+        return _PROVIDER_DESCRIPTORS[normalized]
+    except KeyError as exc:
+        raise DataProviderError(f"Provider dati PAS non riconosciuto: {provider_id!r}") from exc
+
 
 def get_data_provider(provider_id: str = DEFAULT_PROVIDER_ID) -> PASDataProvider:
-    """Factory centrale. Nella v3.8.6 Excel resta il provider operativo predefinito."""
-    normalized = str(provider_id).strip().lower()
-    if normalized == "excel":
-        return ExcelProvider()
-    if normalized == "gpexe":
-        return GPExeProvider()
-    raise DataProviderError(f"Provider dati PAS non riconosciuto: {provider_id!r}")
+    """Factory centrale per istanziare un provider registrato."""
+    normalized = normalize_provider_id(provider_id)
+    try:
+        return _PROVIDER_TYPES[normalized]()
+    except KeyError as exc:
+        raise DataProviderError(f"Provider dati PAS non riconosciuto: {provider_id!r}") from exc
+
+
+def resolve_data_provider(provider_id: str = DEFAULT_PROVIDER_ID) -> ProviderSelection:
+    """Risolve la scelta richiesta applicando un fallback esplicito e testabile.
+
+    Finché GPExe non è operativo, una sua selezione resta registrata come richiesta
+    ma il provider effettivo consegnato al PAS Core è sempre Excel.
+    """
+    requested = get_provider_descriptor(provider_id)
+    effective = requested if requested.operational else get_provider_descriptor(DEFAULT_PROVIDER_ID)
+    return ProviderSelection(
+        requested=requested,
+        effective=effective,
+        provider=get_data_provider(effective.provider_id),
+        fallback_applied=requested.provider_id != effective.provider_id,
+    )

@@ -1,3 +1,17 @@
+## v3.8.7
+
+### Modificato
+- Completata l'orchestrazione del PAS Data Provider con catalogo centralizzato, metadati comuni e factory unica.
+- Separati provider richiesto e provider effettivo tramite una selezione esplicita e testabile.
+- PAS Connect genera le opzioni dal registro dei provider.
+- Se viene selezionato GPExe, il fallback controllato mantiene Excel come provider effettivo.
+
+### Invariato
+- GPExe resta intenzionalmente non operativo nel PAS Core.
+- Nessuna modifica a calcoli, grafica, report, filtri o dati.
+- Database Excel incluso completamente invariato.
+- Compatibilità con Streamlit Cloud preservata.
+
 ## v3.8.6
 
 ### Modificato

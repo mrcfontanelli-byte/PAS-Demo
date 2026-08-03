@@ -25,6 +25,6 @@ def test_report_labels_center_until_they_would_exit_left():
 
 def test_dashboard_loads_through_data_provider():
     app = (Path(__file__).parents[1] / "app.py").read_text(encoding="utf-8")
-    assert "data_provider = get_data_provider()" in app
+    assert "data_provider = provider_selection.provider" in app
     assert "raw = data_provider.load_performance_data(" in app
     assert "match_source = data_provider.load_match_analysis_data(" in app
