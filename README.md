@@ -1,4 +1,12 @@
-## Versione 3.7.44
+## Versione 3.7.45
+
+
+### Sincronizzazione completa GPExe (v3.7.45)
+- Nuovo comando unico che orchestra anagrafiche, Team Sessions, dettagli Team Sessions e Athlete Sessions.
+- Barra di avanzamento e log sintetico durante l'esecuzione.
+- Riepilogo finale con conteggi per ogni fase.
+- I comandi manuali restano disponibili per diagnostica e recuperi mirati.
+- Excel resta la sorgente operativa e il database incluso non viene modificato.
 
 ### PAS Connect · Athlete Sessions GPExe
 - Sincronizza anagrafiche, Team Sessions, dettagli Team Session e Athlete Sessions in `.pas_data/pas_connect.sqlite3`.
@@ -10,7 +18,7 @@
 
 ### PAS
 
-**Versione corrente: 3.7.44**
+**Versione corrente: 3.7.45**
 
 ### GPExe Athlete Sessions (v3.7.44)
 

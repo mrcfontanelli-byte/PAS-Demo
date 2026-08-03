@@ -59,7 +59,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeConfig, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details
+from pas_connect import GPExeClient, GPExeConfig, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync
 from pas_connect.endpoints import TEAMS
 
 
@@ -3061,6 +3061,60 @@ with settings_column:
 
         if is_gpexe_connected:
             st.divider()
+            st.markdown("##### Sincronizzazione completa")
+            st.caption(
+                "Esegue in ordine anagrafiche, Team Sessions, dettagli Team Sessions e Athlete Sessions. "
+                "Excel resta la sorgente operativa e non viene modificato."
+            )
+            if st.button(
+                "🚀 Sincronizzazione completa GPExe",
+                key="pas_gpexe_full_sync",
+                use_container_width=True,
+                type="primary",
+            ):
+                try:
+                    runtime_config = GPExeConfig(
+                        base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                        token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                        timeout_seconds=120.0,
+                        verify_tls=True,
+                    )
+                    runtime_config.validate(require_credentials=True)
+                    runtime_client = GPExeClient(runtime_config)
+                    full_database = PASConnectDatabase.default()
+                    progress_bar = st.progress(0, text="Preparazione sincronizzazione...")
+                    log_box = st.empty()
+                    sync_log: list[str] = []
+
+                    def _full_sync_progress(event):
+                        percent = int(((event.index - (0 if event.status == "success" else 1)) / event.total) * 100)
+                        percent = max(0, min(100, percent))
+                        progress_bar.progress(percent, text=event.message)
+                        sync_log.append(f"{event.step}: {event.status} · {event.message}")
+                        log_box.code("\n".join(sync_log[-12:]), language=None)
+
+                    full_result = run_full_sync(
+                        runtime_client, full_database, progress=_full_sync_progress
+                    )
+                    progress_bar.progress(100, text="Sincronizzazione completa terminata")
+                    st.session_state["pas_gpexe_last_full_sync"] = full_result
+                    ref_counts = full_result["steps"]["reference"]["counts"]
+                    ses = full_result["steps"]["team_sessions"]
+                    det = full_result["steps"]["team_session_details"]
+                    ath = full_result["steps"]["athlete_sessions"]
+                    st.success(
+                        "Sincronizzazione completa: "
+                        f"{ref_counts.get('athletes', 0)} atleti · "
+                        f"{ses.get('received', 0)} Team Sessions · "
+                        f"{det.get('received', 0)} dettagli sessione · "
+                        f"{ath.get('received', 0)} Athlete Sessions."
+                    )
+                except Exception as exc:
+                    st.error(f"Sincronizzazione completa GPExe non riuscita: {exc}")
+
+            st.divider()
+            st.markdown("##### Sincronizzazioni manuali")
+            st.caption("I comandi seguenti restano disponibili per diagnostica e recuperi mirati.")
             st.markdown("##### Prima sincronizzazione")
             st.caption(
                 "Scarica Teams, Categories, Tags e Athletes e li salva nel database PAS Connect "

@@ -1,3 +1,15 @@
+## v3.7.45
+
+### Aggiunto
+- Pulsante unico `Sincronizzazione completa GPExe`.
+- Orchestratore sequenziale per anagrafiche, Team Sessions, dettagli Team Sessions e Athlete Sessions.
+- Barra di avanzamento, log runtime e riepilogo finale dei record sincronizzati.
+- Test automatico end-to-end della pipeline con client GPExe simulato.
+
+### Invariato
+- Excel resta la sorgente dati operativa.
+- Database Excel, Dashboard, analisi e report non vengono modificati.
+
 ## v3.7.44
 
 ### Aggiunto

@@ -224,3 +224,108 @@ def sync_athlete_session_details(
         "received": len(details),
         "failed": len(errors),
     }
+
+@dataclass(frozen=True)
+class FullSyncEvent:
+    step: str
+    index: int
+    total: int
+    status: str
+    message: str
+
+
+def run_full_sync(
+    client: GPExeClient,
+    database: "PASConnectDatabase",
+    *,
+    progress: Callable[[FullSyncEvent], None] | None = None,
+) -> dict[str, Any]:
+    """Esegue in sequenza la pipeline GPExe disponibile nella release.
+
+    La pipeline comprende anagrafiche, Team Sessions, dettagli Team Sessions e
+    Athlete Sessions. Ogni fase è persistita prima di passare alla successiva;
+    un errore di singolo dettaglio resta isolato nei payload di sincronizzazione.
+    """
+    from .database import PASConnectDatabase
+    if not isinstance(database, PASConnectDatabase):
+        raise TypeError("database deve essere un PASConnectDatabase")
+
+    steps = (
+        "Anagrafiche",
+        "Team Sessions",
+        "Dettagli Team Sessions",
+        "Athlete Sessions",
+    )
+    events: list[dict[str, Any]] = []
+
+    def emit(index: int, status: str, message: str) -> None:
+        event = FullSyncEvent(steps[index - 1], index, len(steps), status, message)
+        events.append(event.__dict__.copy())
+        if progress:
+            progress(event)
+
+    started_at = datetime.now(timezone.utc).isoformat()
+    result: dict[str, Any] = {"started_at": started_at, "steps": {}, "events": events}
+
+    emit(1, "running", "Sincronizzazione anagrafiche GPExe...")
+    reference_payload = sync_reference_data(client)
+    reference_result = database.replace_reference_data(reference_payload)
+    result["steps"]["reference"] = {
+        "counts": reference_result.counts,
+        "sync_run_id": reference_result.sync_run_id,
+    }
+    emit(1, "success", "Anagrafiche sincronizzate.")
+
+    emit(2, "running", "Sincronizzazione Team Sessions...")
+    updated_since = database.latest_team_session_updated_at()
+    sessions_payload = sync_team_sessions(client, updated_since=updated_since)
+    sessions_result = database.upsert_team_sessions(sessions_payload)
+    result["steps"]["team_sessions"] = {
+        "received": sessions_result.received,
+        "inserted": sessions_result.inserted,
+        "updated": sessions_result.updated,
+        "sync_run_id": sessions_result.sync_run_id,
+    }
+    emit(2, "success", "Team Sessions sincronizzate.")
+
+    emit(3, "running", "Sincronizzazione dettagli Team Sessions...")
+    session_ids = database.team_session_ids_for_detail_sync(only_missing=True)
+    if session_ids:
+        detail_payload = sync_team_session_details(client, session_ids)
+        detail_result = database.upsert_team_session_details(detail_payload)
+        detail_summary = {
+            "requested": len(session_ids),
+            "received": detail_result.received,
+            "inserted": detail_result.inserted,
+            "updated": detail_result.updated,
+            "failed": detail_result.failed,
+            "athlete_rows": detail_result.athlete_rows,
+            "metric_headers": detail_result.metric_headers,
+            "sync_run_id": detail_result.sync_run_id,
+        }
+    else:
+        detail_summary = {"requested": 0, "received": 0, "inserted": 0, "updated": 0, "failed": 0}
+    result["steps"]["team_session_details"] = detail_summary
+    emit(3, "success", "Dettagli Team Sessions sincronizzati.")
+
+    emit(4, "running", "Sincronizzazione Athlete Sessions...")
+    athlete_refs = database.athlete_session_refs_for_detail_sync(only_missing=True)
+    if athlete_refs:
+        athlete_payload = sync_athlete_session_details(client, athlete_refs)
+        athlete_result = database.upsert_athlete_session_details(athlete_payload)
+        athlete_summary = {
+            "requested": len(athlete_refs),
+            "received": athlete_result.received,
+            "inserted": athlete_result.inserted,
+            "updated": athlete_result.updated,
+            "failed": athlete_result.failed,
+            "sync_run_id": athlete_result.sync_run_id,
+        }
+    else:
+        athlete_summary = {"requested": 0, "received": 0, "inserted": 0, "updated": 0, "failed": 0}
+    result["steps"]["athlete_sessions"] = athlete_summary
+    emit(4, "success", "Athlete Sessions sincronizzate.")
+
+    result["completed_at"] = datetime.now(timezone.utc).isoformat()
+    result["status"] = "success"
+    return result

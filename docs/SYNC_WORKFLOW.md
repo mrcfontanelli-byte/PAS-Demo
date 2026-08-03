@@ -45,3 +45,9 @@ Dopo la lista Team Sessions, PAS Connect scarica solo i dettagli mancanti e regi
 
 ## Step Athlete Sessions (v3.7.44)
 Dopo Team Sessions e relativi dettagli, PAS Connect individua gli ID atleta-sessione mancanti, scarica ogni dettaglio e lo salva con upsert. Excel e PAS Core rimangono isolati.
+
+## Orchestrazione completa v3.7.45
+Il comando `run_full_sync` esegue in sequenza anagrafiche, Team Sessions,
+dettagli Team Sessions e Athlete Sessions. Ogni fase viene salvata prima della
+successiva e può comunicare avanzamento alla UI tramite callback. Le
+sincronizzazioni manuali restano disponibili per diagnostica.
