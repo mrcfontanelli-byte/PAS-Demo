@@ -1,3 +1,10 @@
+## Versione 3.8.2
+
+- La sezione **Drills** utilizza il PAS Data Provider per caricare i fogli `Esercitazioni` e `Esercitazioni Avg`.
+- `ExcelProvider` rimane la sorgente predefinita e conserva esattamente il comportamento precedente.
+- `GPExeProvider` è predisposto sullo stesso contratto, ma non è ancora collegato ai dati operativi.
+- Nessuna modifica a interfaccia, filtri, calcoli, grafici o report.
+
 ## Versione 3.8.1
 
 ### Dashboard e uniformità dei report
@@ -36,7 +43,7 @@
 
 ### PAS
 
-**Versione corrente: 3.8.1**
+**Versione corrente: 3.8.2**
 
 ### GPExe Athlete Sessions (v3.7.44)
 

@@ -1,3 +1,15 @@
+## v3.8.2
+
+### Modificato
+- La sezione Drills carica ora le tabelle `Esercitazioni` e `Esercitazioni Avg` tramite il contratto dedicato del PAS Data Provider.
+- `ExcelProvider` resta il provider operativo e predefinito, preservando lo stesso contenuto e la stessa logica di caricamento.
+- `GPExeProvider` espone lo stesso punto di accesso Drills ma rimane intenzionalmente non operativo.
+
+### Invariato
+- Nessun cambiamento a grafica, filtri, calcoli, box plot o report Drills.
+- Nessun modulo utilizza ancora GPExe come sorgente operativa.
+- Database Excel incluso completamente invariato.
+
 ## v3.8.1
 
 ### Modificato

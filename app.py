@@ -2001,12 +2001,9 @@ def load_exercise_sheets(data_provider, excel_source):
     """
     Carica i fogli Esercitazioni ed Esercitazioni Avg.
     """
-    tables = data_provider.load_named_tables(
+    exercises, averages = data_provider.load_drills_data(
         excel_source,
-        ("Esercitazioni", "Esercitazioni Avg"),
     )
-    exercises = tables["Esercitazioni"]
-    averages = tables["Esercitazioni Avg"]
 
     exercises.columns = [
         str(column).strip()

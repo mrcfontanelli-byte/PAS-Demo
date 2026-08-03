@@ -29,7 +29,7 @@ def test_scale_includes_target_and_preserves_gap():
 def test_mpe_zero_decimals_in_match_report():
     reporting = (ROOT / "modules" / "reporting.py").read_text(encoding="utf-8")
     version = (ROOT / "modules" / "version.py").read_text(encoding="utf-8")
-    assert 'APP_BUILD_VERSION = "3.8.1"' in version
+    assert 'APP_BUILD_VERSION = "3.8.2"' in version
     assert '"MPE Rec Avg Time (s)",' in reporting
     assert "target_vals" in reporting
     assert "useful_span * 0.05" in reporting
