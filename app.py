@@ -2844,10 +2844,9 @@ with database_column:
                     database_excel_source,
                     source_name=uploaded_database.name,
                 )
-                match_source = data_provider.load_performance_data(
+                match_source = data_provider.load_match_analysis_data(
                     database_excel_source,
                     source_name=uploaded_database.name,
-                    filter_configured_roster=False,
                 )
                 database_source_label = "File caricato"
             else:
@@ -2857,10 +2856,9 @@ with database_column:
                     database_excel_source,
                     source_name=database_path.name,
                 )
-                match_source = data_provider.load_performance_data(
+                match_source = data_provider.load_match_analysis_data(
                     database_excel_source,
                     source_name=database_path.name,
-                    filter_configured_roster=False,
                 )
                 database_source_label = "File nella cartella PAS"
 

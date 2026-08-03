@@ -1,3 +1,16 @@
+## v3.8.3
+
+### Modificato
+- La sezione Match Analysis riceve ora il dataset completo tramite il contratto dedicato del PAS Data Provider.
+- `ExcelProvider` resta il provider operativo e predefinito, preservando lo stesso caricamento senza filtro roster richiesto dalle analisi partita.
+- `GPExeProvider` espone lo stesso punto di accesso Match Analysis ma rimane intenzionalmente non operativo.
+
+### Invariato
+- Nessun cambiamento a grafica, filtri, calcoli, selezione giocatori o report Match Analysis.
+- Performance Model continua a utilizzare lo stesso dataset partita già caricato.
+- Nessun modulo utilizza ancora GPExe come sorgente operativa.
+- Database Excel incluso completamente invariato.
+
 ## v3.8.2
 
 ### Modificato

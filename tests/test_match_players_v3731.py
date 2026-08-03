@@ -36,8 +36,9 @@ def test_loader_supports_disabling_static_roster_filter():
 
 def test_match_analysis_uses_unfiltered_match_source():
     source = APP.read_text(encoding="utf-8")
-    assert "match_source = data_provider.load_performance_data(" in source
-    assert "filter_configured_roster=False" in source
+    assert "match_source = data_provider.load_match_analysis_data(" in source
+    provider_source = (APP.parent / "modules" / "data_provider.py").read_text(encoding="utf-8")
+    assert "filter_configured_roster=False" in provider_source
     assert 'match_raw = match_source[' in source
 
 

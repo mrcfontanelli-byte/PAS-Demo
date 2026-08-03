@@ -1,6 +1,8 @@
-## Versione 3.8.2
+## Versione 3.8.3
 
-- La sezione **Drills** utilizza il PAS Data Provider per caricare i fogli `Esercitazioni` e `Esercitazioni Avg`.
+- La sezione **Match Analysis** utilizza ora un contratto dedicato del PAS Data Provider per ricevere il dataset completo delle partite.
+- Dashboard e Drills continuano a utilizzare il PAS Data Provider con Excel come sorgente predefinita.
+- Nessuna variazione a grafica, filtri, calcoli o report.
 - `ExcelProvider` rimane la sorgente predefinita e conserva esattamente il comportamento precedente.
 - `GPExeProvider` è predisposto sullo stesso contratto, ma non è ancora collegato ai dati operativi.
 - Nessuna modifica a interfaccia, filtri, calcoli, grafici o report.
@@ -20,7 +22,7 @@
 - Introdotto `modules/data_provider.py` come livello unico di accesso ai dati del PAS Core.
 - `ExcelProvider` mantiene senza variazioni il caricamento, la pulizia e i filtri Excel già esistenti.
 - `GPExeProvider` è predisposto sullo stesso contratto, ma resta intenzionalmente non operativo e non collegato ai moduli.
-- Dashboard, Drills, Match Analysis, Forecast e Report continuano a utilizzare esclusivamente Excel.
+- Dashboard, Drills e Match Analysis passano dal PAS Data Provider; Forecast e Report restano predisposti per le release successive. Tutti continuano a utilizzare esclusivamente Excel.
 - Excel resta il provider predefinito; grafica, report, calcoli e database incluso restano invariati.
 
 ## Versione 3.7.45
@@ -43,7 +45,7 @@
 
 ### PAS
 
-**Versione corrente: 3.8.2**
+**Versione corrente: 3.8.3**
 
 ### GPExe Athlete Sessions (v3.7.44)
 

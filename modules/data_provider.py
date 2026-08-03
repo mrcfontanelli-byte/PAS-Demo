@@ -1,8 +1,8 @@
 """Livello unico di accesso ai dati del PAS.
 
-La release 3.8.2 mantiene Excel come sorgente operativa predefinita. Il provider
+La release 3.8.3 mantiene Excel come sorgente operativa predefinita. Il provider
 GPExe è predisposto come contratto architetturale, ma non è ancora collegato a
-Match Analysis, Forecast o Report. Dashboard e Drills usano il provider.
+Forecast o Report. Dashboard, Drills e Match Analysis usano il provider.
 """
 from __future__ import annotations
 
@@ -57,6 +57,15 @@ class PASDataProvider(ABC):
         source: Any,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Carica le tabelle operative della sezione Drills."""
+
+    @abstractmethod
+    def load_match_analysis_data(
+        self,
+        source: Any,
+        *,
+        source_name: str | None = None,
+    ) -> pd.DataFrame:
+        """Carica il dataset completo richiesto dalla sezione Match Analysis."""
 
 
 @dataclass(frozen=True)
@@ -118,10 +127,22 @@ class ExcelProvider(PASDataProvider):
         )
         return tables["Esercitazioni"], tables["Esercitazioni Avg"]
 
+    def load_match_analysis_data(
+        self,
+        source: Any,
+        *,
+        source_name: str | None = None,
+    ) -> pd.DataFrame:
+        return self.load_performance_data(
+            source,
+            source_name=source_name,
+            filter_configured_roster=False,
+        )
+
 
 @dataclass(frozen=True)
 class GPExeProvider(PASDataProvider):
-    """Provider GPExe predisposto, intenzionalmente non attivo nella v3.8.2."""
+    """Provider GPExe predisposto, intenzionalmente non attivo nella v3.8.3."""
 
     provider_id: str = "gpexe"
     display_name: str = "GPExe"
@@ -158,12 +179,20 @@ class GPExeProvider(PASDataProvider):
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         raise self._not_ready()
 
+    def load_match_analysis_data(
+        self,
+        source: Any,
+        *,
+        source_name: str | None = None,
+    ) -> pd.DataFrame:
+        raise self._not_ready()
+
 
 DEFAULT_PROVIDER_ID = "excel"
 
 
 def get_data_provider(provider_id: str = DEFAULT_PROVIDER_ID) -> PASDataProvider:
-    """Factory centrale. Nella v3.8.2 il default resta sempre Excel."""
+    """Factory centrale. Nella v3.8.3 il default resta sempre Excel."""
     normalized = str(provider_id).strip().lower()
     if normalized == "excel":
         return ExcelProvider()
