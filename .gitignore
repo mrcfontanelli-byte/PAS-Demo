@@ -10,3 +10,4 @@ __pycache__/
 
 # PAS Connect runtime data (snapshot JSON e database SQLite)
 .pas_data/
+dist/
