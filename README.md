@@ -1,3 +1,13 @@
+## Versione 3.7.36
+
+### PAS Connect Foundation v3.7.36
+
+- Introdotto il package isolato `pas_connect/` con configurazione provider, catalogo endpoint GPExe, autenticazione token, client REST testabile, mapper iniziali e piano di sincronizzazione.
+- Excel resta la sorgente dati predefinita e operativa: nessuna sezione, analisi o interfaccia è stata modificata.
+- Aggiunta documentazione tecnica in `docs/` per specifica PAS Connect, schema dati PAS, mapping GPExe e workflow di sincronizzazione.
+- Le credenziali GPExe non sono incluse nel progetto e dovranno essere lette da Streamlit secrets o variabili d'ambiente nelle release successive.
+- Aggiunti test automatici della foundation senza effettuare chiamate di rete reali.
+
 ## Versione 3.7.35
 
 ### Match Report stemmi e scala compatta v3.7.35

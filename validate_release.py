@@ -16,6 +16,11 @@ REQUIRED_FILES = (
     "modules/__init__.py",
     "modules/config.py",
     "modules/version.py",
+    "pas_connect/__init__.py",
+    "pas_connect/client.py",
+    "pas_connect/config.py",
+    "docs/PAS_CONNECT_SPECIFICATION.md",
+    "docs/PAS_DATA_SCHEMA.md",
     "Database Hellas 25-26.xlsx",
 )
 

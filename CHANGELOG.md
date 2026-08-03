@@ -1,3 +1,16 @@
+## [3.7.36] - 2026-08-03
+
+### Aggiunto
+- Fondamenta del livello `pas_connect` indipendente dal PAS Core.
+- Configurazione provider con Excel predefinito e GPExe predisposto ma non attivo.
+- Catalogo degli endpoint GPExe documentati, gestione token e client REST basato sulla libreria standard.
+- Mapper iniziali per team, atleti, categorie, tag e tabelle metriche posizionali guidate dagli header.
+- Piano di sincronizzazione ordinato e documentazione tecnica in `docs/`.
+- Test automatici della PAS Connect Foundation senza accesso alla rete.
+
+### Invariato
+- Caricamento Excel, interfaccia, analisi, report e database incluso.
+
 ## [3.7.35] - 2026-08-03
 
 ### Corretto
