@@ -1,3 +1,12 @@
+## Versione 3.8.6
+
+La release 3.8.6 completa l'infrastruttura del PAS Data Provider aggiungendo nel pannello PAS Connect la selezione della sorgente dati. Excel resta la sorgente predefinita e operativa; GPExe è visibile ma non ancora utilizzabile dal PAS Core. Nei report, valori e percentuali restano centrati quando rientrano nella colonna e vengono allineati a sinistra dall'inizio della barra soltanto quando il centraggio oltrepasserebbe il bordo sinistro. Le dimensioni maggiorate di Team Average nel Session Report e Total Match restano invariate.
+
+- Aggiunto il selettore **Sorgente dati** in **PAS Connect**, con **Excel** come scelta predefinita.
+- **GPExe** è presente nel selettore ma mostra uno stato non operativo; i dati continuano a essere caricati esclusivamente da Excel.
+- Adeguato l'allineamento automatico delle etichette nei report esclusivamente per lo sconfinamento verso sinistra.
+- Nessuna modifica a calcoli, grafici, struttura dei report o database Excel incluso.
+
 ## Versione 3.8.5
 
 La release 3.8.5 migra la reportistica PAS al Data Provider mantenendo Excel come sorgente predefinita. I report continuano a usare gli stessi dati, calcoli e componenti grafici della v3.8.4.
@@ -51,7 +60,7 @@ La release 3.8.4 migra Forecast al PAS Data Provider mantenendo Excel come sorge
 
 ### PAS
 
-**Versione corrente: 3.8.5**
+**Versione corrente: 3.8.6**
 
 ### GPExe Athlete Sessions (v3.7.44)
 

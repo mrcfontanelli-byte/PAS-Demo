@@ -1048,12 +1048,11 @@ def build_session_report_pdf(
         value_right_bound = (
             x + w - 1.5 if metric in compact_metrics else cell_r
         )
-        value_would_exit_column = (
+        value_would_exit_left = (
             value_center_x - value_text_width / 2 < value_left_bound
-            or value_center_x + value_text_width / 2 > value_right_bound
         )
-        if value_would_exit_column:
-            # Solo quando il testo centrato uscirebbe dalla colonna,
+        if value_would_exit_left:
+            # Solo quando il testo centrato uscirebbe verso sinistra,
             # parte dall'inizio della barra/cella mantenendo il font uniforme.
             pdf.drawString(value_left_bound, value_y, formatted)
         else:
@@ -1087,11 +1086,10 @@ def build_session_report_pdf(
                 percentage_font_name,
                 percentage_font_size,
             )
-            percentage_would_exit_column = (
+            percentage_would_exit_left = (
                 value_center_x - percentage_text_width / 2 < value_left_bound
-                or value_center_x + percentage_text_width / 2 > value_right_bound
             )
-            if percentage_would_exit_column:
+            if percentage_would_exit_left:
                 pdf.drawString(
                     value_left_bound,
                     current_y - active_row_h + active_row_h * 0.20,

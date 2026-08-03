@@ -1,3 +1,16 @@
+## v3.8.6
+
+### Modificato
+- Aggiunta nel pannello **PAS Connect** la selezione della sorgente dati con **Excel** predefinito.
+- **GPExe** è disponibile come opzione infrastrutturale ma resta non operativo; selezionandolo il PAS informa che continua a utilizzare Excel.
+- Nei report, valori e percentuali vengono allineati a sinistra dall'inizio della barra solo quando il testo centrato oltrepasserebbe il bordo sinistro della colonna; in caso contrario restano centrati.
+- Mantenute le dimensioni maggiorate correnti di **Team Average** nel Session Report e **Total Match**.
+
+### Invariato
+- Nessuna modifica ai calcoli, alla grafica, alla struttura o ai contenuti dei report.
+- Database Excel incluso completamente invariato.
+- Compatibilità con Streamlit Cloud preservata.
+
 ## v3.8.5
 
 ### Modificato

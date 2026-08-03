@@ -12,10 +12,12 @@ def test_report_values_do_not_shrink_to_short_bars():
     assert "value_font_size = 10.2 if team else value_font" in source
 
 
-def test_report_labels_center_until_they_would_exit_column():
+def test_report_labels_center_until_they_would_exit_left():
     source = _reporting_source()
-    assert "value_would_exit_column" in source
-    assert "percentage_would_exit_column" in source
+    assert "value_would_exit_left" in source
+    assert "percentage_would_exit_left" in source
+    assert "value_center_x + value_text_width / 2 > value_right_bound" not in source
+    assert "value_center_x + percentage_text_width / 2 > value_right_bound" not in source
     assert "pdf.drawString(value_left_bound, value_y, formatted)" in source
     assert "pdf.drawCentredString(value_center_x, value_y, formatted)" in source
     assert "pdf.drawCentredString(\n                    value_center_x," in source

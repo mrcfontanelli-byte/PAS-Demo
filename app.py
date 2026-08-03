@@ -2956,7 +2956,26 @@ with settings_column:
         )
 
         st.divider()
-        st.markdown("#### PAS Connect · GPExe")
+        st.markdown("#### PAS Connect")
+        selected_data_source = st.selectbox(
+            "Sorgente dati",
+            options=("Excel", "GPExe"),
+            index=0,
+            key="pas_data_source",
+            help=(
+                "Excel è la sorgente operativa predefinita. "
+                "GPExe è già presente nell'infrastruttura ma non è ancora operativo nel PAS Core."
+            ),
+        )
+        if selected_data_source == "GPExe":
+            st.warning(
+                "GPExe non è ancora operativo come sorgente dati. "
+                "Il PAS continua a utilizzare Excel."
+            )
+        else:
+            st.caption("Sorgente operativa: Excel")
+
+        st.markdown("##### Connessione GPExe")
         st.caption(
             "Configura la connessione con GPExe. In questa fase sono disponibili "
             "autenticazione e verifica della connettività; Excel resta la sorgente dati attiva."
