@@ -68,3 +68,6 @@ Questa tabella è ancora isolata dal PAS Core: Excel resta la sorgente operativa
 - `gpexe_team_session_details`: metadati e raw JSON del dettaglio.
 - `gpexe_session_metric_headers`: ordine, label e unità delle metriche restituite.
 - `gpexe_session_athlete_rows`: righe atleta con metriche normalizzate in JSON.
+
+## gpexe_athlete_session_details (v3.7.44)
+Tabella tecnica separata con chiave `provider_athlete_session_id`, collegamenti a Team Session, atleta, drill e track, metadati di stato, `metrics_json`, `zones_json` e payload grezzo. Non alimenta ancora il PAS Core.

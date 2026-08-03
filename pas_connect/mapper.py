@@ -190,6 +190,72 @@ def map_team_session_detail(payload: Mapping[str, Any], *, provider_session_id: 
         "raw": dict(payload),
     }
 
+
+def _scalar_metrics(payload: Mapping[str, Any], excluded: set[str]) -> dict[str, Any]:
+    """Estrae metriche scalari mantenendo fuori metadati e strutture complesse."""
+    result: dict[str, Any] = {}
+    for key, value in payload.items():
+        if key in excluded or isinstance(value, Mapping):
+            continue
+        if isinstance(value, list):
+            continue
+        result[str(key)] = value
+    return result
+
+
+def map_athlete_session_detail(
+    payload: Mapping[str, Any],
+    *,
+    provider_athlete_session_id: int,
+    provider_session_id: int | None = None,
+) -> dict[str, Any]:
+    """Normalizza il dettaglio atleta-sessione conservando tutte le metriche grezze.
+
+    GPExe può estendere il payload con nuove metriche; per questo il mapping salva
+    sia un dizionario di metriche scalari sia il JSON completo del provider.
+    """
+    if not isinstance(payload, Mapping):
+        raise MappingError("Dettaglio Athlete Session GPExe non valido.")
+    athlete = payload.get("athlete") if isinstance(payload.get("athlete"), Mapping) else {}
+    timing = payload.get("timing") if isinstance(payload.get("timing"), Mapping) else {}
+    status = payload.get("status") if isinstance(payload.get("status"), Mapping) else {}
+    excluded = {
+        "id", "athlete", "session", "team_session", "teamsession", "drill", "track",
+        "timing", "status", "created_on", "updated_on", "state", "starter",
+        "is_stats_valid", "need_reprocess",
+    }
+    metrics = _scalar_metrics(payload, excluded)
+    zones = {
+        str(key): value for key, value in payload.items()
+        if isinstance(value, list) and (str(key).endswith("_zones") or str(key).endswith("_events"))
+    }
+    athlete_id = athlete.get("id") or payload.get("athlete_id")
+    linked_session = (
+        provider_session_id
+        if provider_session_id is not None
+        else payload.get("team_session") or payload.get("teamsession") or payload.get("session")
+    )
+    return {
+        "provider": "gpexe",
+        "provider_athlete_session_id": int(provider_athlete_session_id),
+        "provider_session_id": int(linked_session) if linked_session not in (None, "") else None,
+        "provider_player_id": int(athlete_id) if athlete_id not in (None, "") else None,
+        "drill_id": payload.get("drill"),
+        "track_id": payload.get("track"),
+        "start_timestamp": payload.get("start_timestamp") or timing.get("start_timestamp"),
+        "end_timestamp": payload.get("end_timestamp") or timing.get("end_timestamp"),
+        "duration": payload.get("duration") or payload.get("total_time") or timing.get("duration"),
+        "state": payload.get("state") or status.get("state"),
+        "starter": payload.get("starter"),
+        "is_stats_valid": payload.get("is_stats_valid", status.get("is_stats_valid")),
+        "need_reprocess": payload.get("need_reprocess", status.get("need_reprocess")),
+        "updated_at": payload.get("updated_on") or timing.get("updated_on"),
+        "metrics": metrics,
+        "zones": zones,
+        "athlete": dict(athlete),
+        "raw": dict(payload),
+    }
+
 def parse_iso_datetime(value: object) -> datetime | None:
     if value in (None, ""):
         return None

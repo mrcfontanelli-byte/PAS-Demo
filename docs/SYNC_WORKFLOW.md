@@ -42,3 +42,6 @@ persistenza cloud definitiva.
 
 ## Step dettaglio Team Sessions
 Dopo la lista Team Sessions, PAS Connect scarica solo i dettagli mancanti e registra eventuali errori per singola sessione.
+
+## Step Athlete Sessions (v3.7.44)
+Dopo Team Sessions e relativi dettagli, PAS Connect individua gli ID atleta-sessione mancanti, scarica ogni dettaglio e lo salva con upsert. Excel e PAS Core rimangono isolati.

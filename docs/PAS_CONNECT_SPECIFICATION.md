@@ -42,3 +42,6 @@ operativo non viene aperto né modificato dalla sincronizzazione GPExe.
 
 ## v3.7.43 — Team Session Detail
 Il connettore usa `/rest/v2/session/team/{id}/?all_params=true` per importare dettagli, header dinamici e righe atleta senza assumere posizioni fisse delle metriche.
+
+## Athlete Sessions (v3.7.44)
+Il dettaglio individuale viene recuperato da `/rest/v2/session/athlete/{id}/` usando gli ID emersi dalle righe atleta delle Team Sessions. Ogni errore è isolato per ID e non interrompe l’intero lotto.

@@ -7,8 +7,8 @@ from enum import Enum
 from typing import Any, Callable, Mapping
 
 from .client import GPExeClient
-from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, TEAM_SESSIONS, TEAM_SESSION_DETAIL, Endpoint
-from .mapper import map_athlete, map_category, map_many, map_tag, map_team, map_team_session, map_team_session_detail
+from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, TEAM_SESSIONS, TEAM_SESSION_DETAIL, ATHLETE_SESSION_DETAIL, Endpoint
+from .mapper import map_athlete, map_category, map_many, map_tag, map_team, map_team_session, map_team_session_detail, map_athlete_session_detail
 
 
 class SyncResource(str, Enum):
@@ -176,6 +176,48 @@ def sync_team_session_details(
         "schema_version": 3,
         "provider": "gpexe",
         "resource": "team_session_details",
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+        "details": details,
+        "errors": errors,
+        "received": len(details),
+        "failed": len(errors),
+    }
+
+
+def sync_athlete_session_details(
+    client: GPExeClient,
+    athlete_session_refs: list[tuple[int, int | None]],
+) -> dict[str, Any]:
+    """Scarica il dettaglio delle Athlete Sessions indicate.
+
+    Ogni riferimento è ``(athlete_session_id, team_session_id)``; il secondo
+    valore mantiene il collegamento anche quando il payload GPExe non lo espone.
+    """
+    details: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
+    for athlete_session_id, team_session_id in athlete_session_refs:
+        try:
+            payload = client.request(
+                ATHLETE_SESSION_DETAIL,
+                path_values={"id": int(athlete_session_id)},
+            )
+            details.append(
+                map_athlete_session_detail(
+                    payload,
+                    provider_athlete_session_id=int(athlete_session_id),
+                    provider_session_id=int(team_session_id) if team_session_id is not None else None,
+                )
+            )
+        except Exception as exc:
+            errors.append({
+                "provider_athlete_session_id": int(athlete_session_id),
+                "provider_session_id": int(team_session_id) if team_session_id is not None else None,
+                "error": str(exc),
+            })
+    return {
+        "schema_version": 4,
+        "provider": "gpexe",
+        "resource": "athlete_session_details",
         "synced_at": datetime.now(timezone.utc).isoformat(),
         "details": details,
         "errors": errors,

@@ -29,3 +29,6 @@ speed zones dopo verifica sulle soglie reali dell'istanza GPExe.
 
 ## Team Session detail
 `table_data.headers` definisce dinamicamente la corrispondenza delle posizioni in `athlete_sessions[].values`; il PAS non usa indici hard-coded.
+
+## Athlete Session detail (v3.7.44)
+`GET /rest/v2/session/athlete/{id}/` viene mappato conservando ID, sessione, atleta, drill, track, timing, stato, metriche scalari e collezioni di zone. Nuovi campi del provider restano disponibili nel payload grezzo.
