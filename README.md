@@ -1,15 +1,21 @@
-## Versione 3.7.43
+## Versione 3.7.44
 
-### Database PAS Connect per anagrafiche GPExe
-- La sincronizzazione Teams, Categories, Tags e Athletes scrive in `.pas_data/pas_connect.sqlite3`.
+### PAS Connect · Athlete Sessions GPExe
+- Sincronizza anagrafiche, Team Sessions, dettagli Team Session e Athlete Sessions in `.pas_data/pas_connect.sqlite3`.
 - Gli ID GPExe vengono aggiornati tramite upsert, senza creare duplicati.
-- Ogni sincronizzazione registra stato, data/ora e conteggi.
+- Metriche scalari, zone e payload grezzi delle Athlete Sessions restano disponibili nel database tecnico separato.
+- Ogni sincronizzazione registra stato, data/ora, conteggi ed errori isolati.
 - Excel resta la sorgente operativa e tutte le sezioni del PAS restano invariate.
 - Su Streamlit Community Cloud il file SQLite locale è effimero e sarà sostituito successivamente da persistenza cloud esterna.
 
 ### PAS
 
-**Versione corrente: 3.7.43**
+**Versione corrente: 3.7.44**
+
+### GPExe Athlete Sessions (v3.7.44)
+
+PAS Connect può ora scaricare il dettaglio delle Athlete Sessions collegate alle Team Sessions già sincronizzate. Il database separato conserva identificativi, collegamenti a sessione/atleta/drill/track, metriche scalari, zone ed il payload grezzo. Excel resta la sorgente operativa e Dashboard, report e analisi non cambiano.
+
 La release 3.7.43 aggiunge la sincronizzazione incrementale delle Team Sessions GPExe nel database PAS Connect separato, con upsert e log di record nuovi/aggiornati. Excel resta la sorgente operativa e nessuna analisi usa ancora le sessioni GPExe.
 
 - Introdotto il package isolato `pas_connect/` con configurazione provider, catalogo endpoint GPExe, autenticazione token, client REST testabile, mapper iniziali e piano di sincronizzazione.

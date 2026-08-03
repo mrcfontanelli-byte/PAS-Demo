@@ -1,3 +1,18 @@
+## v3.7.44
+
+### Aggiunto
+- Sincronizzazione del dettaglio delle Athlete Sessions tramite `GET /rest/v2/session/athlete/{id}/`.
+- Collegamento stabile fra Athlete Session e Team Session già importata.
+- Tabella SQLite `gpexe_athlete_session_details` con metriche scalari, zone e payload grezzo.
+- Upsert sugli ID GPExe, conteggi di record nuovi/aggiornati ed errori per singola sessione atleta.
+- Comando `Sincronizza Athlete Sessions GPExe` nel pannello PAS Connect.
+- Test di regressione dedicati al mapping dinamico e alla persistenza.
+
+### Invariato
+- Excel resta la sorgente operativa del PAS.
+- Dashboard, report, filtri e analisi non utilizzano ancora i dati GPExe.
+- Database Excel incluso non modificato.
+
 ## Versione 3.7.43
 
 ### Dettaglio Team Sessions GPExe
