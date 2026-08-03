@@ -1,3 +1,12 @@
+## Versione 3.9.0
+
+La release 3.9.0 rende operativo il provider GPExe per export CSV, XLS/XLSX e JSON. Il formato reale GPExe con separatore `;` viene riconosciuto automaticamente e normalizzato nello schema PAS in memoria. Se GPExe è selezionato ma non è ancora stato caricato un export, il PAS usa temporaneamente il database Excel incluso. Le tabelle Drills e Forecast continuano a provenire dal database Excel PAS.
+
+Nella Dashboard, i dettagli di tutti i giocatori di ciascun parametro sono ora raccolti in una tendina chiusa per impostazione predefinita. Il comando per includere il box plot nel report PDF è stato ridotto e spostato sotto la tendina.
+
+- Database Excel incluso completamente invariato.
+- Compatibilità Streamlit Cloud preservata.
+
 ## Versione 3.8.9
 
 La release 3.8.9 introduce il **GPExe Import Engine** isolato dal PAS Core. Legge export JSON, CSV e XLSX, applica il Mapping Layer e restituisce dati canonici esclusivamente in memoria. I record non validi vengono scartati con avvisi controllati; se nessun record è utilizzabile viene segnalato il fallback a Excel. GPExe non alimenta ancora calcoli, grafici o report.

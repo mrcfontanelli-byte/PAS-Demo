@@ -34,7 +34,7 @@ from modules.data_loader import (
     aggregate_player_day,
     database_summary,
 )
-from modules.data_provider import get_available_data_providers, resolve_data_provider
+from modules.data_provider import get_available_data_providers, get_data_provider, resolve_data_provider
 from modules.statistics_engine import (
     descriptive_statistics,
     value_against_reference,
@@ -1002,6 +1002,7 @@ def render_reportable_chart(
     selection_group: str | None = None,
     report_enabled: bool = True,
     report_figure=None,
+    show_selector: bool = True,
 ) -> None:
     st.plotly_chart(
         figure,
@@ -1030,15 +1031,21 @@ def render_reportable_chart(
         "selection_group": report_group,
     }
 
-    if report_group not in _report_selector_groups_rendered:
-        _report_selector_groups_rendered.add(report_group)
+    if show_selector:
+        render_compact_report_selector(report_group)
+
+
+def render_compact_report_selector(report_group: str) -> None:
+    """Comando report discreto, mostrato una sola volta per gruppo."""
+    if report_group in _report_selector_groups_rendered:
+        return
+    _report_selector_groups_rendered.add(report_group)
+    control_col, spacer_col = st.columns([0.42, 1.58], gap="small")
+    with control_col:
         st.checkbox(
-            "Aggiungi box plot al report PDF",
+            "Includi nel report PDF",
             key=f"report_select_group_{report_group}",
-            help=(
-                "Se il parametro contiene più grafici, "
-                "verranno inseriti tutti con una sola selezione."
-            ),
+            help="Include nel report tutti i box plot del parametro.",
         )
 
 
@@ -2836,62 +2843,63 @@ with database_column:
         "🗄️ Database",
         use_container_width=True,
     ):
+        using_gpexe = provider_selection.requested.provider_id == "gpexe"
         uploaded_database = st.file_uploader(
-            "Carica database Excel",
-            type=["xlsx", "xls"],
+            "Carica export GPExe" if using_gpexe else "Carica database Excel",
+            type=["csv", "xlsx", "xls", "json"] if using_gpexe else ["xlsx", "xls"],
             help=(
-                "Se carichi un file, il PAS lo usa per questa sessione. "
-                "Altrimenti utilizza il database presente nella cartella."
+                "Carica un export completo GPExe della sessione. Senza file il PAS usa temporaneamente Excel."
+                if using_gpexe
+                else "Se carichi un file, il PAS lo usa per questa sessione. Altrimenti utilizza il database presente nella cartella."
             ),
+            key="pas_primary_data_upload",
         )
 
         try:
-            if uploaded_database is not None:
+            excel_provider = get_data_provider("excel")
+            excel_path = excel_provider.resolve_default_source(base_dir)
+            database_excel_source = str(excel_path)
+
+            if using_gpexe and uploaded_database is not None:
                 database_path = None
-                database_excel_source = (
-                    uploaded_database.getvalue()
-                )
+                gpexe_source = uploaded_database.getvalue()
                 raw = data_provider.load_performance_data(
-                    database_excel_source,
+                    gpexe_source,
                     source_name=uploaded_database.name,
                 )
                 match_source = data_provider.load_match_analysis_data(
-                    database_excel_source,
+                    gpexe_source,
                     source_name=uploaded_database.name,
                 )
                 report_source = data_provider.load_report_data(
-                    database_excel_source,
+                    gpexe_source,
                     source_name=uploaded_database.name,
                 )
+                database_source_label = "Export GPExe caricato"
+            elif using_gpexe:
+                database_path = excel_path
+                raw = excel_provider.load_performance_data(database_excel_source, source_name=excel_path.name)
+                match_source = excel_provider.load_match_analysis_data(database_excel_source, source_name=excel_path.name)
+                report_source = excel_provider.load_report_data(database_excel_source, source_name=excel_path.name)
+                database_source_label = "Fallback Excel · carica un export GPExe"
+            elif uploaded_database is not None:
+                database_path = None
+                database_excel_source = uploaded_database.getvalue()
+                raw = data_provider.load_performance_data(database_excel_source, source_name=uploaded_database.name)
+                match_source = data_provider.load_match_analysis_data(database_excel_source, source_name=uploaded_database.name)
+                report_source = data_provider.load_report_data(database_excel_source, source_name=uploaded_database.name)
                 database_source_label = "File caricato"
             else:
-                database_path = data_provider.resolve_default_source(base_dir)
-                database_excel_source = str(database_path)
-                raw = data_provider.load_performance_data(
-                    database_excel_source,
-                    source_name=database_path.name,
-                )
-                match_source = data_provider.load_match_analysis_data(
-                    database_excel_source,
-                    source_name=database_path.name,
-                )
-                report_source = data_provider.load_report_data(
-                    database_excel_source,
-                    source_name=database_path.name,
-                )
+                database_path = excel_path
+                raw = data_provider.load_performance_data(database_excel_source, source_name=excel_path.name)
+                match_source = data_provider.load_match_analysis_data(database_excel_source, source_name=excel_path.name)
+                report_source = data_provider.load_report_data(database_excel_source, source_name=excel_path.name)
                 database_source_label = "File nella cartella PAS"
 
-            (
-                exercises_raw,
-                exercises_avg,
-            ) = load_exercise_sheets(
-                data_provider,
-                database_excel_source,
-            )
-            forecast_exercises_avg = load_forecast_sheet(
-                data_provider,
-                database_excel_source,
-            )
+            # Le tabelle di libreria Drills/Forecast non fanno parte dell'export GPExe.
+            # Restano lette dal database Excel incluso senza modificarlo.
+            exercises_raw, exercises_avg = load_exercise_sheets(excel_provider, database_excel_source)
+            forecast_exercises_avg = load_forecast_sheet(excel_provider, database_excel_source)
         except Exception as exc:
             st.error("Errore nel caricamento del database.")
             st.error(str(exc))
@@ -2969,8 +2977,7 @@ with settings_column:
             format_func=provider_labels.get,
             key="pas_data_source",
             help=(
-                "Excel è la sorgente operativa predefinita. "
-                "GPExe è registrato nell'infrastruttura ma non è ancora operativo nel PAS Core."
+                "Excel resta la sorgente predefinita. Seleziona GPExe e carica un export CSV, XLS/XLSX o JSON per usare i dati della sessione."
             ),
         )
         current_selection = resolve_data_provider(selected_provider_id)
@@ -2981,8 +2988,8 @@ with settings_column:
 
         st.markdown("##### Connessione GPExe")
         st.caption(
-            "Configura la connessione con GPExe. In questa fase sono disponibili "
-            "autenticazione e verifica della connettività; Excel resta la sorgente dati attiva."
+            "Puoi usare un export GPExe dal pannello Database oppure configurare la connessione API. "
+            "Excel resta la sorgente dati attiva per Drills e Forecast."
         )
 
         is_gpexe_connected = bool(st.session_state.get("pas_gpexe_connected", False))
@@ -9349,6 +9356,7 @@ else:
                         },
                         selection_group=f"overview_{overview_name}",
                         report_figure=historical_report_figure,
+                        show_selector=False,
                     )
 
                     day_metric_players = current_players[
@@ -9387,13 +9395,14 @@ else:
                         else None
                     )
 
-                    if day_metric_players.empty:
-                        st.info(
-                            "Nessun giocatore disponibile per il confronto "
-                            "con i filtri selezionati."
-                        )
-                    else:
-                        day_players_figure = compact_player_day_bars(
+                    with st.expander("Visualizza dettagli giocatori", expanded=False):
+                        if day_metric_players.empty:
+                            st.info(
+                                "Nessun giocatore disponibile per il confronto "
+                                "con i filtri selezionati."
+                            )
+                        else:
+                            day_players_figure = compact_player_day_bars(
                                 player_values=day_metric_players,
                                 metric=overview_column,
                                 unit=overview_unit,
@@ -9404,20 +9413,19 @@ else:
                                 secondary_suffix="%",
                                 format_type=metric_format(overview_name),
                             )
-                        render_reportable_chart(
-                            day_players_figure,
-                            title=f"{overview_name} - Giocatori del giorno",
-                            key=(
-                                f"day_players_{overview_mode}_"
-                                f"{overview_player}_{overview_name}"
-                            ),
-                            config={
-                                "displayModeBar": False,
-                                "responsive": True,
-                            },
-                            selection_group=f"overview_{overview_name}",
-                            report_enabled=False,
-                        )
+                            render_reportable_chart(
+                                day_players_figure,
+                                title=f"{overview_name} - Giocatori del giorno",
+                                key=(
+                                    f"day_players_{overview_mode}_"
+                                    f"{overview_player}_{overview_name}"
+                                ),
+                                config={"displayModeBar": False, "responsive": True},
+                                selection_group=f"overview_{overview_name}",
+                                report_enabled=False,
+                            )
+
+                    render_compact_report_selector(f"overview_{overview_name}")
 
             metric_reference_rows.append({
                 "Metrica": overview_name,

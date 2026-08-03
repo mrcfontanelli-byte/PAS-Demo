@@ -30,7 +30,7 @@ def _key(value: object) -> str:
 
 CANONICAL_METRICS: tuple[CanonicalMetric, ...] = (
     CanonicalMetric("distance (m)", "m", ("distance", "total distance", "distance m"), True),
-    CanonicalMetric("relative distance (m/min)", "m/min", ("relative distance", "distance per minute", "m/min")),
+    CanonicalMetric("relative distance (m/min)", "m/min", ("relative distance", "distance per minute", "m/min", "avg speed", "avg speed m/min")),
     CanonicalMetric("acc events", "n°", ("acc events", "acceleration events", "accelerations")),
     CanonicalMetric("dec events", "n°", ("dec events", "deceleration events", "decelerations")),
     CanonicalMetric("distance/speed Z3 (m)", "m", ("distance 19.8-25.2", "19.8-25.2 km/h", "speed zone 3 distance")),

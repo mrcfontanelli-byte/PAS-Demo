@@ -198,20 +198,15 @@ class ExcelProvider(PASDataProvider):
 
 @dataclass(frozen=True)
 class GPExeProvider(PASDataProvider):
-    """Provider GPExe registrato, intenzionalmente non attivo nella v3.8.8."""
+    """Provider operativo per export GPExe CSV, XLS/XLSX e JSON."""
 
     provider_id: str = "gpexe"
     display_name: str = "GPExe"
 
-    @staticmethod
-    def _not_ready() -> DataProviderNotReadyError:
-        return DataProviderNotReadyError(
-            "GPExeProvider è predisposto ma non ancora collegato ai moduli PAS. "
-            "Excel resta la sorgente dati operativa predefinita."
-        )
-
     def resolve_default_source(self, base_dir: Path) -> Any:
-        raise self._not_ready()
+        raise DataProviderError(
+            "Seleziona un export GPExe CSV, XLS, XLSX o JSON nel pannello Database."
+        )
 
     def load_performance_data(
         self,
@@ -220,26 +215,45 @@ class GPExeProvider(PASDataProvider):
         source_name: str | None = None,
         filter_configured_roster: bool = True,
     ) -> pd.DataFrame:
-        raise self._not_ready()
+        from modules.config import PLAYERS_HELLAS
+        from modules.gpexe_import import import_gpexe_file
+
+        role_mapping = {
+            "midfileder": "Midfielder", "midfielder": "Midfielder",
+            "central midfielder": "Midfielder", "forward": "Forward",
+            "foward": "Forward", "center back": "Centre Back",
+            "centre back": "Centre Back", "wing backs": "Wing Back",
+            "wing back": "Wing Back", "side back": "Side Back",
+            "full back": "Side Back", "fullback": "Side Back",
+            "playmaker": "Play", "play": "Play", "goalkeeper": "Goalkeeper",
+        }
+        result = import_gpexe_file(source, source_name=source_name, require_core=True)
+        frame = result.data.copy()
+        frame["Role Clean"] = frame["Role"].map(
+            lambda value: role_mapping.get(str(value).strip().lower(), str(value).strip().title())
+        )
+        if filter_configured_roster:
+            frame = frame[frame["Athlete"].isin(PLAYERS_HELLAS)].copy()
+        frame.attrs.update(result.data.attrs)
+        frame.attrs["gpexe_rows_read"] = result.rows_read
+        frame.attrs["gpexe_rows_rejected"] = result.rows_rejected
+        frame.attrs["gpexe_warnings"] = result.warnings
+        return frame.reset_index(drop=True)
 
     def load_named_tables(
         self,
         source: Any,
         table_names: tuple[str, ...],
     ) -> Mapping[str, pd.DataFrame]:
-        raise self._not_ready()
+        raise DataProviderError(
+            "Gli export GPExe non contengono le tabelle Esercitazioni del database PAS."
+        )
 
-    def load_drills_data(
-        self,
-        source: Any,
-    ) -> tuple[pd.DataFrame, pd.DataFrame]:
-        raise self._not_ready()
+    def load_drills_data(self, source: Any) -> tuple[pd.DataFrame, pd.DataFrame]:
+        raise DataProviderNotReadyError("Le tabelle Drills restano disponibili dal database Excel PAS.")
 
-    def load_forecast_data(
-        self,
-        source: Any,
-    ) -> pd.DataFrame:
-        raise self._not_ready()
+    def load_forecast_data(self, source: Any) -> pd.DataFrame:
+        raise DataProviderNotReadyError("La tabella Forecast resta disponibile dal database Excel PAS.")
 
     def load_match_analysis_data(
         self,
@@ -247,7 +261,7 @@ class GPExeProvider(PASDataProvider):
         *,
         source_name: str | None = None,
     ) -> pd.DataFrame:
-        raise self._not_ready()
+        return self.load_performance_data(source, source_name=source_name, filter_configured_roster=False)
 
     def load_report_data(
         self,
@@ -255,7 +269,7 @@ class GPExeProvider(PASDataProvider):
         *,
         source_name: str | None = None,
     ) -> pd.DataFrame:
-        raise self._not_ready()
+        return self.load_performance_data(source, source_name=source_name, filter_configured_roster=True)
 
 
 DEFAULT_PROVIDER_ID = "excel"
@@ -275,11 +289,8 @@ _PROVIDER_DESCRIPTORS: dict[str, ProviderDescriptor] = {
     "gpexe": ProviderDescriptor(
         provider_id="gpexe",
         display_name="GPExe",
-        operational=False,
-        status_message=(
-            "GPExe non è ancora operativo come sorgente dati. "
-            "Il PAS continua a utilizzare Excel."
-        ),
+        operational=True,
+        status_message="Sorgente operativa: export GPExe",
     ),
 }
 
@@ -316,8 +327,8 @@ def get_data_provider(provider_id: str = DEFAULT_PROVIDER_ID) -> PASDataProvider
 def resolve_data_provider(provider_id: str = DEFAULT_PROVIDER_ID) -> ProviderSelection:
     """Risolve la scelta richiesta applicando un fallback esplicito e testabile.
 
-    Finché GPExe non è operativo, una sua selezione resta registrata come richiesta
-    ma il provider effettivo consegnato al PAS Core è sempre Excel.
+    Restituisce il provider richiesto. Il fallback a Excel viene gestito dalla UI
+    solo quando non è stato ancora caricato un export GPExe valido.
     """
     requested = get_provider_descriptor(provider_id)
     effective = requested if requested.operational else get_provider_descriptor(DEFAULT_PROVIDER_ID)

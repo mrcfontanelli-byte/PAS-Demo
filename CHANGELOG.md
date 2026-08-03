@@ -1,3 +1,20 @@
+## v3.9.0
+
+### Aggiunto
+- Provider GPExe operativo per export CSV, XLS/XLSX e JSON.
+- Riconoscimento automatico del separatore CSV, incluso il formato GPExe con `;`.
+- Normalizzazione dei metadati sessione e delle metriche GPS nello schema PAS.
+- Fallback temporaneo a Excel quando GPExe è selezionato ma non è stato caricato un export.
+
+### Modificato
+- Dettagli giocatori delle card Dashboard raccolti in una tendina chiusa per impostazione predefinita.
+- Controllo “Includi nel report PDF” reso più compatto e spostato sotto la tendina.
+
+### Invariato
+- Database Excel incluso completamente invariato.
+- Calcoli e struttura dei report invariati.
+- Compatibilità Streamlit Cloud preservata.
+
 ## v3.8.9
 
 ### Aggiunto
