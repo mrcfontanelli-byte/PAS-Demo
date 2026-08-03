@@ -1,3 +1,16 @@
+## v3.8.1
+
+### Modificato
+- Dashboard confermata sul PAS Data Provider con Excel come provider operativo predefinito.
+- Dimensione uniforme delle etichette numeriche nelle barre dei report tabellari, senza riduzione automatica sulle barre corte.
+- Percentuale Max Speed allineata al centro della relativa barra, come il valore Max Speed.
+- Valori `TEAM AVERAGE` del Session Report ingranditi allo stesso livello di `TOTAL MATCH`.
+
+### Invariato
+- Nessun cambiamento a calcoli, dati, palette, struttura dei report o funzionalità esistenti.
+- GPExe resta predisposto ma non collegato ai moduli operativi.
+- Database Excel incluso completamente invariato.
+
 ## v3.8.0
 
 ### Aggiunto

@@ -1,6 +1,6 @@
 """Livello unico di accesso ai dati del PAS.
 
-La release 3.8.0 mantiene Excel come sorgente operativa predefinita. Il provider
+La release 3.8.1 mantiene Excel come sorgente operativa predefinita. Il provider
 GPExe è predisposto come contratto architetturale, ma non è ancora collegato a
 Dashboard, Drills, Match Analysis, Forecast o Report.
 """
@@ -104,7 +104,7 @@ class ExcelProvider(PASDataProvider):
 
 @dataclass(frozen=True)
 class GPExeProvider(PASDataProvider):
-    """Provider GPExe predisposto, intenzionalmente non attivo nella v3.8.0."""
+    """Provider GPExe predisposto, intenzionalmente non attivo nella v3.8.1."""
 
     provider_id: str = "gpexe"
     display_name: str = "GPExe"
@@ -140,7 +140,7 @@ DEFAULT_PROVIDER_ID = "excel"
 
 
 def get_data_provider(provider_id: str = DEFAULT_PROVIDER_ID) -> PASDataProvider:
-    """Factory centrale. Nella v3.8.0 il default resta sempre Excel."""
+    """Factory centrale. Nella v3.8.1 il default resta sempre Excel."""
     normalized = str(provider_id).strip().lower()
     if normalized == "excel":
         return ExcelProvider()

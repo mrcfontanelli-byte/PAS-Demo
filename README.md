@@ -1,3 +1,12 @@
+## Versione 3.8.1
+
+### Dashboard e uniformità dei report
+- La Dashboard utilizza il PAS Data Provider già introdotto, mantenendo `ExcelProvider` come sorgente predefinita e senza variazioni funzionali.
+- Nei report tabellari condivisi (Session, Period, Match e layout equivalenti) le etichette numeriche mantengono una dimensione costante anche quando la barra è corta; il testo può oltrepassare la barra senza essere ridotto.
+- La percentuale di Max Speed è centrata orizzontalmente nella stessa barra del valore Max Speed.
+- `TEAM AVERAGE` nel Session Report usa la stessa dimensione maggiorata dei valori di `TOTAL MATCH`.
+- Calcoli, grafica restante, database Excel e collegamento GPExe restano invariati.
+
 ## Versione 3.8.0
 
 ### PAS Data Provider
@@ -27,7 +36,7 @@
 
 ### PAS
 
-**Versione corrente: 3.8.0**
+**Versione corrente: 3.8.1**
 
 ### GPExe Athlete Sessions (v3.7.44)
 

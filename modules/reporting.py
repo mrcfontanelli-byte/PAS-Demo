@@ -1016,29 +1016,17 @@ def build_session_report_pdf(
                 )
 
         pdf.setFillColor(colors.HexColor("#071426"))
-        value_font_size = (
-            10.2
-            if team and summary_mode == "match_total"
-            else 8.0 if team
-            else value_font
-        )
+        # TEAM AVERAGE e TOTAL MATCH condividono la stessa gerarchia
+        # tipografica: TOTAL MATCH resta il riferimento visivo.
+        value_font_size = 10.2 if team else value_font
         value_font_name = "Helvetica-Bold" if team else "Helvetica"
 
         # Il valore della metrica è centrato nella barra colorata;
-        # se non è presente una barra valida resta centrato nella cella.
+        # se la barra è corta il carattere resta invariato e il testo può
+        # oltrepassarne i bordi, preservando la leggibilità fra metriche.
         value_center_x = x + w / 2
         if metric not in compact_metrics and numeric == numeric and max_v > min_v:
             value_center_x = cell_l + max(0.0, bw) / 2
-            available_text_w = max(5.0, bw - 2.0)
-            while (
-                value_font_size > 4.2
-                and stringWidth(
-                    formatted,
-                    value_font_name,
-                    value_font_size,
-                ) > available_text_w
-            ):
-                value_font_size -= 0.25
 
         pdf.setFont(value_font_name, value_font_size)
 
@@ -1070,8 +1058,11 @@ def build_session_report_pdf(
                 "Helvetica-Bold" if team else "Helvetica",
                 6.5 if team else max(5.4, value_font - 1.0),
             )
+            # La percentuale usa lo stesso centro orizzontale del valore
+            # principale (in particolare Max Speed), quindi resta centrata
+            # nella relativa barra colorata e non nella cella completa.
             pdf.drawCentredString(
-                x + w / 2,
+                value_center_x,
                 current_y - active_row_h + active_row_h * 0.20,
                 (
                     f"{float(percentage_value):.0f}%"
