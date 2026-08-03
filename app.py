@@ -3069,9 +3069,9 @@ with settings_column:
 
         gpexe_base_url = st.text_input(
             "API base URL",
-            value=str(gpexe_secrets.get("base_url", "https://e15-ui.gpexe.com/api")),
+            value=str(gpexe_secrets.get("base_url", "https://e15.gpexe.com/ui/v2/")),
             key="pas_gpexe_base_url",
-            help="Radice API dell’istanza GPExe. Per questa installazione: https://e15-ui.gpexe.com/api",
+            help="Endpoint GraphQL verificato dell’istanza GPExe: https://e15.gpexe.com/ui/v2/",
         )
         gpexe_auth_mode = st.radio(
             "Autenticazione",
@@ -3093,7 +3093,7 @@ with settings_column:
             )
         else:
             gpexe_username = st.text_input(
-                "Username",
+                "Email GPExe",
                 value=str(gpexe_secrets.get("username", "")),
                 key="pas_gpexe_username",
             )
@@ -3124,17 +3124,15 @@ with settings_column:
                 if not runtime_token:
                     runtime_token = client.authenticate()
 
-                provider = GPExeAPIDataProvider(GPExeServices(client))
-                provider.test_connection()
-                teams = provider.get_teams()
-                team_count = len(teams)
+                client.test_connection()
+                team_count = None
 
                 st.session_state["pas_gpexe_runtime_token"] = runtime_token
                 st.session_state["pas_gpexe_connected"] = True
                 st.session_state["pas_gpexe_connected_base_url"] = config.base_url.rstrip("/")
                 st.session_state["pas_gpexe_team_count"] = team_count
                 st.session_state["pas_gpexe_connected_at"] = pd.Timestamp.now(tz="UTC").isoformat()
-                st.success("Connessione GPExe riuscita. Lo stato è mantenuto nella sessione corrente.")
+                st.success("Connessione GraphQL GPExe riuscita. Token verificato nella sessione corrente.")
                 st.rerun()
             except Exception as exc:
                 for state_key in (
@@ -3149,6 +3147,10 @@ with settings_column:
 
         if is_gpexe_connected:
             st.divider()
+            st.markdown("##### GPExe GraphQL Foundation")
+            st.success("Autenticazione GraphQL operativa. Le query Team, TeamSession, Athletes e Tracks saranno abilitate dopo la mappatura delle query ufficiali del portale.")
+            st.caption("Le precedenti chiamate REST sono disattivate per evitare richieste verso endpoint non validi. Excel e il database PAS restano invariati.")
+
             st.markdown("##### Team e TeamSession")
             st.caption("Recupero in sola lettura dalle API GPExe; il database Excel non viene modificato.")
             try:
@@ -3158,7 +3160,7 @@ with settings_column:
                     timeout_seconds=30.0, verify_tls=True,
                 )
                 foundation_provider = GPExeAPIDataProvider(GPExeServices(GPExeClient(foundation_config)))
-                if st.button("Recupera Team", key="pas_gpexe_get_teams", use_container_width=True):
+                if st.button("Recupera Team", key="pas_gpexe_get_teams", use_container_width=True, disabled=True):
                     st.session_state["pas_gpexe_teams"] = foundation_provider.get_teams()
                 teams_foundation = st.session_state.get("pas_gpexe_teams", [])
                 if teams_foundation:
@@ -3170,7 +3172,7 @@ with settings_column:
                         key="pas_gpexe_selected_team_index",
                     )
                     selected_team = teams_foundation[selected_team_index]
-                    if st.button("Recupera TeamSession", key="pas_gpexe_get_sessions", use_container_width=True):
+                    if st.button("Recupera TeamSession", key="pas_gpexe_get_sessions", use_container_width=True, disabled=True):
                         team_id = selected_team.get("id") or selected_team.get("pk") or selected_team.get("uuid")
                         st.session_state["pas_gpexe_team_sessions"] = foundation_provider.get_team_sessions(team_id)
                     sessions_foundation = st.session_state.get("pas_gpexe_team_sessions", [])
@@ -3191,6 +3193,7 @@ with settings_column:
                 key="pas_gpexe_full_sync",
                 use_container_width=True,
                 type="primary",
+                disabled=True,
             ):
                 try:
                     runtime_config = GPExeConfig(
@@ -3246,6 +3249,7 @@ with settings_column:
                 "Sincronizza anagrafiche GPExe",
                 key="pas_gpexe_sync_reference",
                 use_container_width=True,
+                disabled=True,
             ):
                 try:
                     runtime_config = GPExeConfig(
@@ -3308,6 +3312,7 @@ with settings_column:
                 "Sincronizza Team Sessions GPExe",
                 key="pas_gpexe_sync_team_sessions",
                 use_container_width=True,
+                disabled=True,
             ):
                 try:
                     runtime_config = GPExeConfig(
@@ -3362,6 +3367,7 @@ with settings_column:
                 "Sincronizza dettagli Team Sessions GPExe",
                 key="pas_gpexe_sync_team_session_details",
                 use_container_width=True,
+                disabled=True,
             ):
                 try:
                     runtime_config = GPExeConfig(
@@ -3418,6 +3424,7 @@ with settings_column:
                 "Sincronizza Athlete Sessions GPExe",
                 key="pas_gpexe_sync_athlete_session_details",
                 use_container_width=True,
+                disabled=True,
             ):
                 try:
                     runtime_config = GPExeConfig(
@@ -3482,7 +3489,7 @@ with settings_column:
         with st.expander("Configurazione Streamlit Secrets", expanded=False):
             st.code(
                 '[gpexe]\n'
-                'base_url = "https://e15-ui.gpexe.com/api"\n'
+                'base_url = "https://e15.gpexe.com/ui/v2/"\n'
                 'token = "INSERISCI_TOKEN"\n'
                 '# oppure username = "..." e password = "..."',
                 language="toml",

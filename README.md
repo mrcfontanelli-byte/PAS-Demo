@@ -1,10 +1,10 @@
-## PAS v4.1.1 — Correzione autenticazione GPExe
+## PAS v4.2.0 — Correzione autenticazione GPExe
 
 Release correttiva del collegamento GPExe. Il client prova l’autenticazione `/auth/token` tramite `application/x-www-form-urlencoded` e mantiene il payload JSON come fallback di compatibilità. In caso di risposta non JSON, PAS Connect mostra codice HTTP, Content-Type, URL chiamato e una breve anteprima sanitizzata, senza esporre password o token. Database Excel, calcoli, dashboard e report restano invariati.
 
-## Versione 4.1.1
+## Versione 4.2.0
 
-La release 4.1.1 completa il flusso operativo GPExe nel pannello **PAS Connect** e rifinisce le card della Dashboard. Se GPExe è selezionato, l'export CSV, XLS/XLSX o JSON si carica direttamente da PAS Connect, viene validato e utilizzato esclusivamente in memoria. In assenza di un file valido il PAS continua a utilizzare Excel; Drills e Forecast restano alimentati dal database Excel incluso.
+La release 4.2.0 completa il flusso operativo GPExe nel pannello **PAS Connect** e rifinisce le card della Dashboard. Se GPExe è selezionato, l'export CSV, XLS/XLSX o JSON si carica direttamente da PAS Connect, viene validato e utilizzato esclusivamente in memoria. In assenza di un file valido il PAS continua a utilizzare Excel; Drills e Forecast restano alimentati dal database Excel incluso.
 
 Nella Dashboard, i dettagli di tutti i giocatori restano raccolti nella tendina **Visualizza dettagli giocatori**, chiusa per impostazione predefinita. Il controllo report usa ora tutta la larghezza disponibile ed è mostrato in una singola riga con l'etichetta **Aggiungi box plot al report**.
 
@@ -2002,6 +2002,10 @@ Esempi: `chi ha accumulato più Distance negli ultimi 2 cicli gara?`, `confronta
 
 PAS Connect può ora scaricare il dettaglio delle Team Sessions già sincronizzate, includendo header, timing, stato, intestazioni metriche dinamiche e righe atleta. I dati vengono salvati esclusivamente in `.pas_data/pas_connect.sqlite3`; il database Excel e le analisi esistenti non vengono modificati.
 
-## GPExe Data Bridge (v4.1.1)
+## GPExe Data Bridge (v4.2.0)
 
 PAS Connect può ora sincronizzare Teams, Team Sessions, Athletes, Categories, Tags, Tracks e dettagli atleta-sessione, quindi trasformare le sessioni API selezionate nello schema prestativo già usato dal PAS. La sorgente GPExe API è selezionabile in Settings → PAS Connect; senza sessioni utilizzabili viene applicato il fallback Excel. Drills e Forecast continuano a leggere esclusivamente il database Excel incluso, che non viene modificato.
+
+## GPExe GraphQL Foundation (v4.2.0)
+
+PAS Connect autentica l'utente mediante la mutation GraphQL `TokenAuth` sull'endpoint `https://e15.gpexe.com/ui/v2/`. Il token JWT rimane esclusivamente nella sessione Streamlit. Il test di connessione usa una query GraphQL minima. Le precedenti operazioni REST di sincronizzazione sono visibili ma disattivate finché le query ufficiali Team, TeamSession, Athletes, Categories, Tags e Tracks non saranno mappate dal traffico reale del portale. Excel, calcoli, dashboard e report non sono modificati.

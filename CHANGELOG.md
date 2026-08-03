@@ -1,6 +1,15 @@
+# PAS v4.2.0
+
+- Sostituita l'autenticazione REST presunta con la mutation GraphQL `TokenAuth` realmente usata dal portale GPExe.
+- Endpoint predefinito: `https://e15.gpexe.com/ui/v2/`.
+- Aggiunto client GraphQL generico con token JWT, errori GraphQL, timeout, retry e rate limit.
+- Aggiunto test connessione GraphQL tramite `__typename`.
+- Disattivate le chiamate REST GPExe non verificate per evitare richieste a endpoint inesistenti.
+- Nessuna modifica a calcoli, dashboard, report o database Excel.
+
 # Changelog
 
-## 4.1.1 - 2026-08-03
+## 4.2.0 - 2026-08-03
 
 - Corretto il login GPExe usando form URL-encoded come primo formato.
 - Mantenuto il payload JSON come fallback di compatibilità.
@@ -8,7 +17,7 @@
 - Aggiunta diagnostica sicura per risposte non JSON: HTTP, Content-Type, URL e anteprima limitata.
 - Nessuna modifica a database Excel, calcoli, dashboard o report.
 
-## 4.1.1 - 2026-08-03
+## 4.2.0 - 2026-08-03
 
 - Collegato il database separato PAS Connect al Data Provider GPExe del PAS Core.
 - Aggiunta selezione multipla delle TeamSession API da usare nelle analisi.
