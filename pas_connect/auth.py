@@ -11,13 +11,6 @@ TOKEN_AUTH_MUTATION = """mutation TokenAuth($email: String!, $password: String!)
   }
 }"""
 
-REFRESH_TOKEN_MUTATION = """mutation RefreshToken($token: String!) {
-  refreshToken(token: $token) {
-    token
-    refreshToken
-  }
-}"""
-
 def build_token_payload(username: str, password: str) -> dict[str, Any]:
     if not username or not password:
         raise AuthenticationError("Email e password GPExe sono obbligatorie.")
@@ -32,19 +25,18 @@ def extract_auth_tokens(payload: Mapping[str, Any]) -> tuple[str, str, bool]:
         raise AuthenticationError("La risposta GraphQL GPExe non è valida.")
     errors = payload.get("errors")
     if errors:
-        message = "; ".join(str(e.get("message", e)) if isinstance(e, Mapping) else str(e) for e in errors)
-        raise AuthenticationError(f"Autenticazione GraphQL GPExe non riuscita: {message}")
+        raise AuthenticationError("Credenziali GPExe non valide o autenticazione rifiutata.")
     data = payload.get("data")
     auth = data.get("tokenAuth") if isinstance(data, Mapping) else None
     if not isinstance(auth, Mapping):
         raise AuthenticationError("La risposta GraphQL non contiene tokenAuth.")
     token = str(auth.get("token") or "").strip()
     refresh = str(auth.get("refreshToken") or "").strip()
-    active = bool(auth.get("isActive", True))
-    if not token:
-        raise AuthenticationError("La risposta GraphQL GPExe non contiene un token valido.")
+    active = auth.get("isActive") is True
     if not active:
         raise AuthenticationError("L'account GPExe risulta non attivo.")
+    if not token:
+        raise AuthenticationError("La risposta GraphQL GPExe non contiene un token valido.")
     return token, refresh, active
 
 def extract_token(payload: Mapping[str, Any]) -> str:

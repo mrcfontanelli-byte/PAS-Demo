@@ -5,6 +5,9 @@ from typing import Any, Mapping
 
 from .client import GPExeClient
 from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAM_SESSIONS, TEAMS, TRACKS
+from .exceptions import APIRequestError
+
+UNVERIFIED_QUERY_MESSAGE = "Query GraphQL Team/TeamSession da acquisire e verificare."
 
 
 def _items(payload: Any) -> list[dict[str, Any]]:
@@ -23,22 +26,19 @@ class GPExeServices:
     client: GPExeClient
 
     def teams(self, **query: object) -> list[dict[str, Any]]:
-        return _items(self.client.request(TEAMS, query=query or None))
+        raise APIRequestError(UNVERIFIED_QUERY_MESSAGE)
 
     def team_sessions(self, *, team_id: object | None = None, **query: object) -> list[dict[str, Any]]:
-        params = dict(query)
-        if team_id is not None:
-            params.setdefault("team", team_id)
-        return _items(self.client.request(TEAM_SESSIONS, query=params or None))
+        raise APIRequestError(UNVERIFIED_QUERY_MESSAGE)
 
     def athletes(self, **query: object) -> list[dict[str, Any]]:
-        return _items(self.client.request(ATHLETES, query=query or None))
+        raise APIRequestError("Query GraphQL Athletes da acquisire e verificare.")
 
     def categories(self, **query: object) -> list[dict[str, Any]]:
-        return _items(self.client.request(SESSION_CATEGORIES, query=query or None))
+        raise APIRequestError("Query GraphQL Categories da acquisire e verificare.")
 
     def tags(self, **query: object) -> list[dict[str, Any]]:
-        return _items(self.client.request(SESSION_TAGS, query=query or None))
+        raise APIRequestError("Query GraphQL Tags da acquisire e verificare.")
 
     def tracks(self, **query: object) -> list[dict[str, Any]]:
-        return _items(self.client.request(TRACKS, query=query or None))
+        raise APIRequestError("Query GraphQL Tracks da acquisire e verificare.")

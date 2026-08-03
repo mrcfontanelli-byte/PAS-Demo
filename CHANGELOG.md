@@ -1,30 +1,16 @@
-# PAS v4.2.0
-
-- Sostituita l'autenticazione REST presunta con la mutation GraphQL `TokenAuth` realmente usata dal portale GPExe.
-- Endpoint predefinito: `https://e15.gpexe.com/ui/v2/`.
-- Aggiunto client GraphQL generico con token JWT, errori GraphQL, timeout, retry e rate limit.
-- Aggiunto test connessione GraphQL tramite `__typename`.
-- Disattivate le chiamate REST GPExe non verificate per evitare richieste a endpoint inesistenti.
-- Nessuna modifica a calcoli, dashboard, report o database Excel.
-
 # Changelog
 
-## 4.2.0 - 2026-08-03
+## PAS v4.2.0 - 2026-08-03
 
-- Corretto il login GPExe usando form URL-encoded come primo formato.
-- Mantenuto il payload JSON come fallback di compatibilità.
-- Supportati token nelle chiavi `token`, `access_token`, `key` e nel blocco `data`.
-- Aggiunta diagnostica sicura per risposte non JSON: HTTP, Content-Type, URL e anteprima limitata.
-- Nessuna modifica a database Excel, calcoli, dashboard o report.
-
-## 4.2.0 - 2026-08-03
-
-- Collegato il database separato PAS Connect al Data Provider GPExe del PAS Core.
-- Aggiunta selezione multipla delle TeamSession API da usare nelle analisi.
-- Convertite righe atleta e metriche GPExe nello schema prestativo PAS esistente.
-- Aggiunta sincronizzazione e persistenza dei Tracks.
-- Mantenuti invariati database Excel, calcoli, dashboard e report.
-- Conservato Excel come sorgente predefinita e fallback sicuro.
+- Sostituito il flusso di autenticazione REST presunto con il client dedicato `GPExeGraphQLClient` e la mutation verificata `TokenAuth` inviata via `POST` JSON.
+- Configurato l'endpoint GraphQL predefinito `https://e15.gpexe.com/ui/v2/`, mantenendolo modificabile da PAS Connect e Streamlit Secrets.
+- Gestiti `token`, `refreshToken`, `isActive`, timeout, retry prudenti, errori HTTP, risposte non JSON, errori GraphQL e struttura `data` non valida.
+- Protetta la diagnostica da password, token, refresh token, cookie e header `Authorization`.
+- Mantenuta Excel come sorgente predefinita e mantenuti separati provider Excel e GPExe.
+- Scollegati dalle analisi i dati API GPExe derivati da query non verificate; gli export GPExe restano disponibili separatamente.
+- Disabilitati i controlli Team, TeamSession e sincronizzazione con il messaggio “Query GraphQL Team/TeamSession da acquisire e verificare.”
+- Non implementate query GraphQL Team, TeamSession, Athletes, Categories, Tags o Tracks.
+- Nessuna modifica a database Excel, calcoli, dashboard, grafici o report.
 
 # v4.0.0 — GPExe Foundation
 

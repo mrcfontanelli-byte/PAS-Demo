@@ -1,47 +1,41 @@
-from urllib.request import Request
+import json
 
 import pytest
 
-from pas_connect import GPExeClient, GPExeConfig
-from pas_connect.exceptions import AuthenticationError
+from pas_connect import GPExeConfig, GPExeGraphQLClient
+from pas_connect.exceptions import APIRequestError, AuthenticationError
 
 
-def test_authentication_uses_form_payload_first():
-    captured: list[Request] = []
-
-    def transport(request, timeout, verify_tls):
-        captured.append(request)
-        return 200, b'{"token":"form-token"}', {"Content-Type": "application/json"}
-
-    client = GPExeClient(GPExeConfig(username="user", password="pass"), transport=transport)
-    assert client.authenticate() == "form-token"
-    assert captured[0].headers["Content-type"] == "application/x-www-form-urlencoded"
-    assert captured[0].data == b"username=user&password=pass"
-
-
-def test_authentication_falls_back_to_json():
-    captured: list[Request] = []
+def test_authentication_uses_token_auth_json_payload_only():
+    captured = []
 
     def transport(request, timeout, verify_tls):
         captured.append(request)
-        if len(captured) == 1:
-            return 200, b"<html>form not supported</html>", {"Content-Type": "text/html"}
-        return 200, b'{"access_token":"json-token"}', {"Content-Type": "application/json"}
+        return 200, b'{"data":{"tokenAuth":{"isActive":true,"token":"jwt","refreshToken":"refresh"}}}'
 
-    client = GPExeClient(GPExeConfig(username="user", password="pass"), transport=transport)
-    assert client.authenticate() == "json-token"
-    assert captured[1].headers["Content-type"] == "application/json"
+    client = GPExeGraphQLClient(GPExeConfig(username="user", password="pass"), transport=transport)
+    assert client.authenticate() == "jwt"
+    assert captured[0].headers["Content-type"] == "application/json"
+    assert json.loads(captured[0].data)["variables"] == {"email": "user", "password": "pass"}
+
+
+def test_graphql_authentication_errors_are_authentication_errors():
+    client = GPExeGraphQLClient(
+        GPExeConfig(username="user", password="secret"),
+        transport=lambda *_: (200, b'{"errors":[{"message":"invalid credentials"}]}'),
+    )
+    with pytest.raises(AuthenticationError, match="Credenziali GPExe non valide"):
+        client.authenticate()
 
 
 def test_non_json_diagnostic_is_safe_and_actionable():
-    def transport(request, timeout, verify_tls):
-        return 200, b"<html>Login page</html>", {"Content-Type": "text/html; charset=utf-8"}
-
-    client = GPExeClient(GPExeConfig(username="user", password="secret"), transport=transport)
-    with pytest.raises(AuthenticationError) as exc_info:
+    client = GPExeGraphQLClient(
+        GPExeConfig(username="user", password="secret"),
+        transport=lambda *_: (200, b"<html>secret</html>", {"Content-Type": "text/html"}),
+    )
+    with pytest.raises(APIRequestError) as exc_info:
         client.authenticate()
     message = str(exc_info.value)
     assert "Content-Type text/html" in message
-    assert "/rest/v2/auth/token/" in message
-    assert "Login page" in message
+    assert "https://e15.gpexe.com/ui/v2/" in message
     assert "secret" not in message
