@@ -1,3 +1,16 @@
+## v3.8.0
+
+### Aggiunto
+- Livello unico `PASDataProvider` per l'accesso ai dati del PAS Core.
+- `ExcelProvider` operativo e predefinito, basato sulla logica Excel esistente.
+- `GPExeProvider` predisposto con lo stesso contratto, non ancora collegato ai moduli operativi.
+- Test automatici dedicati alla selezione del provider e al blocco controllato di GPExe.
+
+### Invariato
+- Tutti i moduli continuano a leggere da Excel.
+- Database Excel incluso, dati, grafica, report, analisi e calcoli non vengono modificati.
+- Compatibilità con Streamlit Cloud mantenuta.
+
 ## v3.7.45
 
 ### Aggiunto

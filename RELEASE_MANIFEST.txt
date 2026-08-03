@@ -1,5 +1,5 @@
 PAS RELEASE MANIFEST
-Version: 3.7.45
+Version: 3.8.0
 
 c1c156bda4e6e95eb375559b8bbb8715e693f914851bf7da32adaf9ea1256ad7	173	.gitignore
 966cfadceac62ad90eba6954ebc454dbd1b15113bc64c3c04f04fd784ef49d60	190	.streamlit/config.toml

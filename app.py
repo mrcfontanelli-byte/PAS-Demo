@@ -31,11 +31,10 @@ from modules.security import DEMO_PASSWORD
 from modules.version import APP_BUILD_VERSION, APP_EDITION
 from modules.pas_assistant import render_pas_assistant
 from modules.data_loader import (
-    find_database,
-    load_database,
     aggregate_player_day,
     database_summary,
 )
+from modules.data_provider import get_data_provider
 from modules.statistics_engine import (
     descriptive_statistics,
     value_against_reference,
@@ -1998,18 +1997,16 @@ def ensure_exercise_metric_aliases(
 
 
 @st.cache_data(show_spinner=False)
-def load_exercise_sheets(excel_source):
+def load_exercise_sheets(data_provider, excel_source):
     """
     Carica i fogli Esercitazioni ed Esercitazioni Avg.
     """
-    exercises = pd.read_excel(
+    tables = data_provider.load_named_tables(
         excel_source,
-        sheet_name="Esercitazioni",
+        ("Esercitazioni", "Esercitazioni Avg"),
     )
-    averages = pd.read_excel(
-        excel_source,
-        sheet_name="Esercitazioni Avg",
-    )
+    exercises = tables["Esercitazioni"]
+    averages = tables["Esercitazioni Avg"]
 
     exercises.columns = [
         str(column).strip()
@@ -2822,6 +2819,8 @@ if _sidebar_logo.exists():
 st.sidebar.markdown("**PAS** · Performance Analysis System")
 st.sidebar.caption("Hellas Verona FC")
 
+data_provider = get_data_provider()
+
 database_column, settings_column = st.sidebar.columns(2, gap="small")
 
 with database_column:
@@ -2844,24 +2843,24 @@ with database_column:
                 database_excel_source = (
                     uploaded_database.getvalue()
                 )
-                raw = load_database(
+                raw = data_provider.load_performance_data(
                     database_excel_source,
                     source_name=uploaded_database.name,
                 )
-                match_source = load_database(
+                match_source = data_provider.load_performance_data(
                     database_excel_source,
                     source_name=uploaded_database.name,
                     filter_configured_roster=False,
                 )
                 database_source_label = "File caricato"
             else:
-                database_path = find_database(base_dir)
+                database_path = data_provider.resolve_default_source(base_dir)
                 database_excel_source = str(database_path)
-                raw = load_database(
+                raw = data_provider.load_performance_data(
                     database_excel_source,
                     source_name=database_path.name,
                 )
-                match_source = load_database(
+                match_source = data_provider.load_performance_data(
                     database_excel_source,
                     source_name=database_path.name,
                     filter_configured_roster=False,
@@ -2872,7 +2871,8 @@ with database_column:
                 exercises_raw,
                 exercises_avg,
             ) = load_exercise_sheets(
-                database_excel_source
+                data_provider,
+                database_excel_source,
             )
         except Exception as exc:
             st.error("Errore nel caricamento del database.")

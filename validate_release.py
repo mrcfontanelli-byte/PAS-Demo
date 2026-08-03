@@ -15,6 +15,7 @@ REQUIRED_FILES = (
     "CHANGELOG.md",
     "modules/__init__.py",
     "modules/config.py",
+    "modules/data_provider.py",
     "modules/version.py",
     "pas_connect/__init__.py",
     "pas_connect/client.py",
