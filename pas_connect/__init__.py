@@ -6,7 +6,7 @@ non verrà attivata esplicitamente in una release successiva.
 """
 
 from .config import DataProvider, GPExeConfig, PASConnectConfig
-from .client import GPExeClient
+from .client import GPExeClient, GPExeGraphQLClient
 from .services import GPExeServices
 from .provider import GPExeAPIDataProvider
 from .storage import SnapshotStore
@@ -19,6 +19,7 @@ __all__ = [
     "GPExeConfig",
     "PASConnectConfig",
     "GPExeClient",
+    "GPExeGraphQLClient",
     "GPExeServices",
     "GPExeAPIDataProvider",
     "SnapshotStore",

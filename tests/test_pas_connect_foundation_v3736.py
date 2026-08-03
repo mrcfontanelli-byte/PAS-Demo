@@ -18,7 +18,7 @@ def test_excel_remains_default_provider():
     config.validate()
 
 
-def test_client_builds_authenticated_request_without_network():
+def test_client_posts_graphql_authentication_without_network():
     captured = {}
 
     def transport(request, timeout, verify_tls):
@@ -26,20 +26,14 @@ def test_client_builds_authenticated_request_without_network():
         captured["auth"] = request.headers.get("Authorization")
         captured["timeout"] = timeout
         captured["verify_tls"] = verify_tls
-        return 200, json.dumps({"id": 9}).encode()
+        return 200, json.dumps({"data": {"tokenAuth": {"isActive": True, "token": "abc", "refreshToken": "refresh"}}}).encode()
 
     client = GPExeClient(
-        GPExeConfig(base_url="https://example.test", token="abc", timeout_seconds=12),
+        GPExeConfig(base_url="https://example.test", username="user", password="pass", timeout_seconds=12),
         transport=transport,
     )
-    result = client.request(ATHLETE_DETAIL, path_values={"id": 9})
-    assert result == {"id": 9}
-    assert captured == {
-        "url": "https://example.test/rest/v2/athlete/9/",
-        "auth": "Token abc",
-        "timeout": 12,
-        "verify_tls": True,
-    }
+    assert client.authenticate() == "abc"
+    assert captured == {"url": "https://example.test/", "auth": None, "timeout": 12, "verify_tls": True}
 
 
 def test_headers_drive_positional_metric_mapping():

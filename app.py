@@ -58,7 +58,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync
+from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync
 from pas_connect.pas_bridge import available_sessions
 from pas_connect.endpoints import TEAMS
 
@@ -2892,7 +2892,7 @@ with database_column:
                 raw = excel_provider.load_performance_data(database_excel_source, source_name=excel_path.name)
                 match_source = excel_provider.load_match_analysis_data(database_excel_source, source_name=excel_path.name)
                 report_source = excel_provider.load_report_data(database_excel_source, source_name=excel_path.name)
-                database_source_label = "Fallback Excel · sincronizza GPExe o carica un export"
+                database_source_label = "Fallback Excel · usa dati locali GPExe o carica un export"
             elif uploaded_database is not None:
                 database_path = None
                 database_excel_source = uploaded_database.getvalue()
@@ -2988,7 +2988,7 @@ with settings_column:
             format_func=provider_labels.get,
             key="pas_data_source",
             help=(
-                "Excel resta la sorgente predefinita. GPExe può usare le sessioni API sincronizzate oppure un export."
+                "Excel resta la sorgente predefinita. GPExe può usare sessioni già sincronizzate localmente oppure un export."
             ),
         )
         current_selection = resolve_data_provider(selected_provider_id)
@@ -3003,7 +3003,7 @@ with settings_column:
                 options=("API sincronizzata", "File export"),
                 horizontal=True,
                 key="pas_gpexe_input_mode",
-                help="La modalità API usa il database PAS Connect separato; il file Excel incluso resta invariato.",
+                help="La modalità API usa esclusivamente dati già presenti nel database PAS Connect locale.",
             )
             api_database_path = PASConnectDatabase.default(base_dir).path
             api_sessions = available_sessions(api_database_path)
@@ -3013,7 +3013,7 @@ with settings_column:
                     session_options = tuple(session_by_id)
                     defaults = [sid for sid in st.session_state.get("pas_gpexe_active_session_ids", []) if sid in session_by_id]
                     selected_ids = st.multiselect(
-                        "TeamSession attive nel PAS",
+                        "TeamSession locali attive nel PAS",
                         options=session_options,
                         default=defaults,
                         format_func=lambda sid: (
@@ -3021,11 +3021,14 @@ with settings_column:
                             f"{session_by_id[sid].get('session_name') or sid}"
                         ),
                         key="pas_gpexe_active_session_ids",
-                        help="Senza selezione vengono utilizzate tutte le TeamSession sincronizzate.",
+                        help="Senza selezione vengono utilizzate tutte le TeamSession già memorizzate localmente.",
                     )
-                    st.success(f"GPExe API disponibile: {len(api_sessions)} TeamSession · {len(selected_ids) or len(api_sessions)} attive.")
+                    st.success(
+                        f"Dati GPExe locali disponibili: {len(api_sessions)} TeamSession · "
+                        f"{len(selected_ids) or len(api_sessions)} selezionate."
+                    )
                 else:
-                    st.info("Esegui una sincronizzazione completa GPExe per rendere disponibili le TeamSession nel PAS.")
+                    st.info("Nessuna TeamSession GPExe presente nel database PAS Connect locale.")
             gpexe_export = st.file_uploader(
                 "Carica export GPExe",
                 type=["csv", "xlsx", "xls", "json"],
@@ -3045,8 +3048,8 @@ with settings_column:
 
         st.markdown("##### Connessione GPExe")
         st.caption(
-            "Puoi sincronizzare le TeamSession API e usarle direttamente nel PAS, oppure caricare un export. "
-            "Excel resta la sorgente dati attiva per Drills e Forecast e non viene modificato."
+            "La connessione verifica esclusivamente l'autenticazione GraphQL. "
+            "Excel resta la sorgente predefinita e non viene modificato."
         )
 
         is_gpexe_connected = bool(st.session_state.get("pas_gpexe_connected", False))
@@ -3073,36 +3076,17 @@ with settings_column:
             key="pas_gpexe_base_url",
             help="Endpoint GraphQL verificato dell’istanza GPExe: https://e15.gpexe.com/ui/v2/",
         )
-        gpexe_auth_mode = st.radio(
-            "Autenticazione",
-            options=("Token", "Username e password"),
-            horizontal=True,
-            key="pas_gpexe_auth_mode",
+        gpexe_username = st.text_input(
+            "Email GPExe",
+            value=str(gpexe_secrets.get("username", "")),
+            key="pas_gpexe_username",
         )
-
-        gpexe_token = ""
-        gpexe_username = ""
-        gpexe_password = ""
-        if gpexe_auth_mode == "Token":
-            gpexe_token = st.text_input(
-                "Token API",
-                value=str(gpexe_secrets.get("token", "")),
-                type="password",
-                key="pas_gpexe_token",
-                help="Il token resta nella sessione corrente e non viene scritto nei file.",
-            )
-        else:
-            gpexe_username = st.text_input(
-                "Email GPExe",
-                value=str(gpexe_secrets.get("username", "")),
-                key="pas_gpexe_username",
-            )
-            gpexe_password = st.text_input(
-                "Password",
-                value=str(gpexe_secrets.get("password", "")),
-                type="password",
-                key="pas_gpexe_password",
-            )
+        gpexe_password = st.text_input(
+            "Password",
+            value=str(gpexe_secrets.get("password", "")),
+            type="password",
+            key="pas_gpexe_password",
+        )
 
         if st.button(
             "Connetti a GPExe",
@@ -3114,20 +3098,17 @@ with settings_column:
                     base_url=gpexe_base_url.strip(),
                     username=gpexe_username.strip(),
                     password=gpexe_password,
-                    token=gpexe_token.strip(),
                     timeout_seconds=20.0,
                     verify_tls=True,
                 )
                 config.validate(require_credentials=True)
-                client = GPExeClient(config)
-                runtime_token = client.token
-                if not runtime_token:
-                    runtime_token = client.authenticate()
-
+                client = GPExeGraphQLClient(config)
                 client.test_connection()
+                runtime_token = client.token
                 team_count = None
 
                 st.session_state["pas_gpexe_runtime_token"] = runtime_token
+                st.session_state["pas_gpexe_runtime_refresh_token"] = client.refresh_token
                 st.session_state["pas_gpexe_connected"] = True
                 st.session_state["pas_gpexe_connected_base_url"] = config.base_url.rstrip("/")
                 st.session_state["pas_gpexe_team_count"] = team_count
@@ -3137,6 +3118,7 @@ with settings_column:
             except Exception as exc:
                 for state_key in (
                     "pas_gpexe_runtime_token",
+                    "pas_gpexe_runtime_refresh_token",
                     "pas_gpexe_connected",
                     "pas_gpexe_connected_base_url",
                     "pas_gpexe_team_count",
@@ -3152,7 +3134,7 @@ with settings_column:
             st.caption("Le precedenti chiamate REST sono disattivate per evitare richieste verso endpoint non validi. Excel e il database PAS restano invariati.")
 
             st.markdown("##### Team e TeamSession")
-            st.caption("Recupero in sola lettura dalle API GPExe; il database Excel non viene modificato.")
+            st.warning("Query GraphQL Team/TeamSession da acquisire e verificare.")
             try:
                 foundation_config = GPExeConfig(
                     base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
@@ -3478,6 +3460,7 @@ with settings_column:
             ):
                 for state_key in (
                     "pas_gpexe_runtime_token",
+                    "pas_gpexe_runtime_refresh_token",
                     "pas_gpexe_connected",
                     "pas_gpexe_connected_base_url",
                     "pas_gpexe_team_count",

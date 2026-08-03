@@ -13,7 +13,6 @@ class Endpoint:
         return self.path.format(**values)
 
 
-AUTH_TOKEN = Endpoint("POST", "/rest/v2/auth/token/")
 TEAMS = Endpoint("GET", "/rest/v2/team/")
 TEAM_DETAIL = Endpoint("GET", "/rest/v2/team/{id}/")
 ATHLETES = Endpoint("GET", "/rest/v2/athlete/")

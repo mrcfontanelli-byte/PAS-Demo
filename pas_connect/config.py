@@ -12,12 +12,7 @@ from .exceptions import ConfigurationError
 
 
 def normalize_gpexe_base_url(value: str) -> str:
-    """Normalizza l'indirizzo radice delle API senza rimuovere il prefisso /api.
-
-    L'istanza GPExe fornita espone la documentazione e le REST API sotto
-    ``https://e15.gpexe.com/ui/v2/``. Sono rimossi soltanto spazi e slash
-    finali, così gli endpoint ``/rest/v2/...`` vengono composti correttamente.
-    """
+    """Valida e normalizza l'endpoint GraphQL GPExe configurato."""
     normalized = str(value or "").strip().rstrip("/")
     parsed = urlparse(normalized)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:

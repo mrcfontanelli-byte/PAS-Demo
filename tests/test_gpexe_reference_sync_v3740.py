@@ -1,7 +1,10 @@
 from pathlib import Path
 
+import pytest
+
 from pas_connect.client import GPExeClient
 from pas_connect.config import GPExeConfig
+from pas_connect.exceptions import APIRequestError
 from pas_connect.storage import SnapshotStore
 from pas_connect.sync import fetch_all_pages, sync_reference_data
 
@@ -27,12 +30,8 @@ def _transport(request, timeout, verify_tls):
 
 def test_reference_sync_maps_and_counts(tmp_path):
     client = GPExeClient(GPExeConfig(base_url="https://example.test", token="abc"), transport=_transport)
-    snapshot = sync_reference_data(client)
-    assert snapshot["counts"] == {"teams": 1, "categories": 1, "tags": 1, "athletes": 1}
-    assert snapshot["resources"]["athletes"][0]["player_name"] == "John Doe"
-    store = SnapshotStore(tmp_path / "snapshot.json")
-    store.save(snapshot)
-    assert store.load()["provider"] == "gpexe"
+    with pytest.raises(APIRequestError, match="Query GraphQL Team/TeamSession"):
+        sync_reference_data(client)
 
 
 def test_ui_exposes_reference_sync():
