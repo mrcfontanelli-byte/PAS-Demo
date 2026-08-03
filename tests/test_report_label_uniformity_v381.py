@@ -12,10 +12,13 @@ def test_report_values_do_not_shrink_to_short_bars():
     assert "value_font_size = 10.2 if team else value_font" in source
 
 
-def test_max_speed_percentage_uses_bar_center():
+def test_report_labels_center_until_they_would_exit_column():
     source = _reporting_source()
-    percentage_section = source.split("if has_percentage:", 1)[1].split("pdf.setStrokeColor", 1)[0]
-    assert "pdf.drawCentredString(\n                value_center_x," in percentage_section
+    assert "value_would_exit_column" in source
+    assert "percentage_would_exit_column" in source
+    assert "pdf.drawString(value_left_bound, value_y, formatted)" in source
+    assert "pdf.drawCentredString(value_center_x, value_y, formatted)" in source
+    assert "pdf.drawCentredString(\n                    value_center_x," in source
 
 
 def test_dashboard_loads_through_data_provider():

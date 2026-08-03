@@ -1,3 +1,15 @@
+## v3.8.4
+
+### Modificato
+- La sezione Forecast carica `Esercitazioni Avg` tramite un contratto dedicato del PAS Data Provider.
+- `ExcelProvider` resta il provider operativo e predefinito; `GPExeProvider` espone lo stesso contratto ma rimane non operativo.
+- Nei report tabellari, valori e percentuali restano centrati nella barra finché rientrano nella colonna; se il testo centrato supererebbe i bordi, viene allineato a sinistra dall'inizio della barra colorata.
+
+### Invariato
+- Nessun cambiamento ai calcoli, alla palette, alle dimensioni dei caratteri o alla struttura dei report.
+- Nessun modulo utilizza ancora GPExe come sorgente operativa.
+- Database Excel incluso completamente invariato.
+
 ## v3.8.3
 
 ### Modificato

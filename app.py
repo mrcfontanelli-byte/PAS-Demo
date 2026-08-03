@@ -2800,6 +2800,14 @@ def match_text(info: dict | None, future: bool) -> str:
     return f"{info['name']} · {distance}"
 
 
+@st.cache_data(show_spinner=False)
+def load_forecast_sheet(data_provider, excel_source):
+    """Carica tramite PAS Data Provider la tabella usata dal Forecast."""
+    averages = data_provider.load_forecast_data(excel_source)
+    averages.columns = [str(column).strip() for column in averages.columns]
+    return averages.loc[:, ~averages.columns.duplicated(keep="first")].copy()
+
+
 base_dir = Path(__file__).resolve().parent
 
 _sidebar_logo = (
@@ -2866,6 +2874,10 @@ with database_column:
                 exercises_raw,
                 exercises_avg,
             ) = load_exercise_sheets(
+                data_provider,
+                database_excel_source,
+            )
+            forecast_exercises_avg = load_forecast_sheet(
                 data_provider,
                 database_excel_source,
             )
@@ -6830,7 +6842,7 @@ if page == "🔮 Forecast":
     )
 
     forecast_roles = sorted(
-        exercises_avg["Role"]
+        forecast_exercises_avg["Role"]
         .dropna()
         .astype(str)
         .unique()
@@ -6856,8 +6868,8 @@ if page == "🔮 Forecast":
     )
 
     forecast_drills = sorted(
-        exercises_avg.loc[
-            exercises_avg["Role"].eq(forecast_role),
+        forecast_exercises_avg.loc[
+            forecast_exercises_avg["Role"].eq(forecast_role),
             "Drill",
         ]
         .dropna()
@@ -6937,7 +6949,7 @@ if page == "🔮 Forecast":
 
     forecast_result = forecast_calculation(
         forecast_plan,
-        exercises_avg,
+        forecast_exercises_avg,
         forecast_role,
     )
 

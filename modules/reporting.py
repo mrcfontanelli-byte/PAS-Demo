@@ -1039,11 +1039,25 @@ def build_session_report_pdf(
             current_y - active_row_h
             + active_row_h * (0.54 if has_percentage else 0.35)
         )
-        pdf.drawCentredString(
-            value_center_x,
-            value_y,
+        value_text_width = stringWidth(
             formatted,
+            value_font_name,
+            value_font_size,
         )
+        value_left_bound = cell_l if metric not in compact_metrics else x + 1.5
+        value_right_bound = (
+            x + w - 1.5 if metric in compact_metrics else cell_r
+        )
+        value_would_exit_column = (
+            value_center_x - value_text_width / 2 < value_left_bound
+            or value_center_x + value_text_width / 2 > value_right_bound
+        )
+        if value_would_exit_column:
+            # Solo quando il testo centrato uscirebbe dalla colonna,
+            # parte dall'inizio della barra/cella mantenendo il font uniforme.
+            pdf.drawString(value_left_bound, value_y, formatted)
+        else:
+            pdf.drawCentredString(value_center_x, value_y, formatted)
 
         if has_percentage:
             metric_percentage_label = (
@@ -1058,21 +1072,37 @@ def build_session_report_pdf(
                 "Helvetica-Bold" if team else "Helvetica",
                 6.5 if team else max(5.4, value_font - 1.0),
             )
-            # La percentuale usa lo stesso centro orizzontale del valore
-            # principale (in particolare Max Speed), quindi resta centrata
-            # nella relativa barra colorata e non nella cella completa.
-            pdf.drawCentredString(
-                value_center_x,
-                current_y - active_row_h + active_row_h * 0.20,
-                (
-                    f"{float(percentage_value):.0f}%"
-                    + (
-                        f" {metric_percentage_label}"
-                        if metric_percentage_label
-                        else ""
-                    )
-                ),
+            percentage_text = (
+                f"{float(percentage_value):.0f}%"
+                + (
+                    f" {metric_percentage_label}"
+                    if metric_percentage_label
+                    else ""
+                )
             )
+            percentage_font_name = "Helvetica-Bold" if team else "Helvetica"
+            percentage_font_size = 6.5 if team else max(5.4, value_font - 1.0)
+            percentage_text_width = stringWidth(
+                percentage_text,
+                percentage_font_name,
+                percentage_font_size,
+            )
+            percentage_would_exit_column = (
+                value_center_x - percentage_text_width / 2 < value_left_bound
+                or value_center_x + percentage_text_width / 2 > value_right_bound
+            )
+            if percentage_would_exit_column:
+                pdf.drawString(
+                    value_left_bound,
+                    current_y - active_row_h + active_row_h * 0.20,
+                    percentage_text,
+                )
+            else:
+                pdf.drawCentredString(
+                    value_center_x,
+                    current_y - active_row_h + active_row_h * 0.20,
+                    percentage_text,
+                )
         pdf.setStrokeColor(colors.HexColor("#D4DCE5"))
         pdf.setLineWidth(0.25)
         pdf.rect(

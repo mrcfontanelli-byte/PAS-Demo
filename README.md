@@ -1,4 +1,6 @@
-## Versione 3.8.3
+## Versione 3.8.4
+
+La release 3.8.4 migra Forecast al PAS Data Provider mantenendo Excel come sorgente predefinita. Nei report, le etichette restano centrate finché rientrano nella colonna; quando uscirebbero dai bordi vengono allineate a sinistra dall’inizio della barra colorata.
 
 - La sezione **Match Analysis** utilizza ora un contratto dedicato del PAS Data Provider per ricevere il dataset completo delle partite.
 - Dashboard e Drills continuano a utilizzare il PAS Data Provider con Excel come sorgente predefinita.
@@ -45,7 +47,7 @@
 
 ### PAS
 
-**Versione corrente: 3.8.3**
+**Versione corrente: 3.8.4**
 
 ### GPExe Athlete Sessions (v3.7.44)
 
