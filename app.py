@@ -60,6 +60,7 @@ from modules.charts import (
 )
 from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync
 from pas_connect.pas_bridge import available_sessions
+from pas_connect.mapper import map_team_session
 from pas_connect.endpoints import TEAMS
 
 
@@ -3129,12 +3130,11 @@ with settings_column:
 
         if is_gpexe_connected:
             st.divider()
-            st.markdown("##### GPExe GraphQL Foundation")
-            st.success("Autenticazione GraphQL operativa. Le query Team, TeamSession, Athletes e Tracks saranno abilitate dopo la mappatura delle query ufficiali del portale.")
-            st.caption("Le precedenti chiamate REST sono disattivate per evitare richieste verso endpoint non validi. Excel e il database PAS restano invariati.")
+            st.markdown("##### GPExe GraphQL")
+            st.success("Autenticazione GraphQL operativa. Team e TeamSession sono disponibili.")
+            st.caption("Excel e il PAS Core restano invariati: l'import usa esclusivamente il database locale PAS Connect.")
 
             st.markdown("##### Team e TeamSession")
-            st.warning("Query GraphQL Team/TeamSession da acquisire e verificare.")
             try:
                 foundation_config = GPExeConfig(
                     base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
@@ -3142,27 +3142,75 @@ with settings_column:
                     timeout_seconds=30.0, verify_tls=True,
                 )
                 foundation_provider = GPExeAPIDataProvider(GPExeServices(GPExeClient(foundation_config)))
-                if st.button("Recupera Team", key="pas_gpexe_get_teams", use_container_width=True, disabled=True):
+                if "pas_gpexe_teams" not in st.session_state:
                     st.session_state["pas_gpexe_teams"] = foundation_provider.get_teams()
                 teams_foundation = st.session_state.get("pas_gpexe_teams", [])
                 if teams_foundation:
                     def _entity_label(item):
                         return str(item.get("name") or item.get("title") or item.get("label") or item.get("id") or "Team")
                     selected_team_index = st.selectbox(
-                        "Team GPExe", range(len(teams_foundation)),
+                        "Team", range(len(teams_foundation)),
                         format_func=lambda index: _entity_label(teams_foundation[index]),
                         key="pas_gpexe_selected_team_index",
                     )
                     selected_team = teams_foundation[selected_team_index]
-                    if st.button("Recupera TeamSession", key="pas_gpexe_get_sessions", use_container_width=True, disabled=True):
+                    default_end = pd.Timestamp.today().date()
+                    default_start = default_end - timedelta(days=6)
+                    date_col1, date_col2 = st.columns(2)
+                    with date_col1:
+                        start_date = st.date_input("Data iniziale", value=default_start, key="pas_gpexe_start_date")
+                    with date_col2:
+                        end_date = st.date_input("Data finale", value=default_end, key="pas_gpexe_end_date")
+                    if st.button("Recupera Team Sessions", key="pas_gpexe_get_sessions", use_container_width=True):
                         team_id = selected_team.get("id") or selected_team.get("pk") or selected_team.get("uuid")
-                        st.session_state["pas_gpexe_team_sessions"] = foundation_provider.get_team_sessions(team_id)
+                        if start_date > end_date:
+                            st.error("La data iniziale non può essere successiva alla data finale.")
+                        else:
+                            st.session_state["pas_gpexe_team_sessions"] = foundation_provider.get_team_sessions(
+                                team_id, start_date=start_date.isoformat(), end_date=end_date.isoformat(),
+                            )
                     sessions_foundation = st.session_state.get("pas_gpexe_team_sessions", [])
                     if sessions_foundation:
                         st.success(f"TeamSession recuperate: {len(sessions_foundation)}")
-                        st.dataframe(pd.DataFrame(sessions_foundation), use_container_width=True, hide_index=True)
+                        session_rows = []
+                        for session in sessions_foundation:
+                            category = session.get("category")
+                            session_rows.append({
+                                "Seleziona": False,
+                                "id": session.get("id"),
+                                "categoria": category.get("name") if isinstance(category, dict) else category,
+                                "data": session.get("startTimestamp"),
+                                "durata": session.get("duration"),
+                                "athleteCount": session.get("athleteCount"),
+                                "matchCycle": session.get("matchCycle"),
+                                "state": session.get("state"),
+                                "drill": session.get("drill"),
+                                "drillEnabled": session.get("drillEnabled"),
+                            })
+                        selection = st.data_editor(
+                            pd.DataFrame(session_rows), hide_index=True, use_container_width=True,
+                            disabled=[column for column in session_rows[0] if column != "Seleziona"],
+                            key="pas_gpexe_session_selection",
+                        )
+                        selected_ids = set(selection.loc[selection["Seleziona"], "id"].astype(str))
+                        if st.button("Importa nel database PAS", key="pas_gpexe_import_sessions", use_container_width=True):
+                            selected_sessions = [item for item in sessions_foundation if str(item.get("id")) in selected_ids]
+                            if not selected_sessions:
+                                st.warning("Seleziona almeno una TeamSession da importare.")
+                            else:
+                                team_id = selected_team.get("id")
+                                mapped = [map_team_session({**item, "team": team_id}) for item in selected_sessions]
+                                result = PASConnectDatabase.default().upsert_team_sessions({"sessions": mapped})
+                                st.success(f"Importazione completata: {result.inserted} nuove · {result.updated} aggiornate.")
+                    else:
+                        st.info("Il Team non ha TeamSession nell'intervallo selezionato.")
+                else:
+                    st.info("Nessun Team disponibile.")
             except Exception as exc:
                 st.error(f"Recupero GPExe non riuscito: {exc}")
+
+            st.markdown("##### Athletes, Tracks e metriche dinamiche")
+            st.info("Funzione disponibile in una release successiva.")
 
             st.divider()
             st.markdown("##### Sincronizzazione completa")

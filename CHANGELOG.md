@@ -1,5 +1,14 @@
 # Changelog
 
+## PAS v4.3.0 - 2026-08-04
+
+- Implementate esclusivamente le query GraphQL verificate `TeamSelector` e `GetTeamSessions` nel provider GPExe.
+- Resi operativi in PAS Connect il menu Team, l'intervallo date precompilato sugli ultimi 7 giorni e il recupero delle TeamSession.
+- Aggiunta tabella TeamSession con selezione multipla e importazione nel database SQLite locale PAS Connect.
+- Mantenuti disabilitati Athletes, Tracks e metriche dinamiche con il messaggio “Funzione disponibile in una release successiva.”
+- Aggiunti test per query e variabili GraphQL, errori GraphQL, risposte vuote, Team senza sessioni, timeout, risposta non JSON e persistenza locale.
+- Nessuna modifica a database Excel, Dashboard, report, grafici, calcoli o Match Analysis.
+
 ## PAS v4.2.0 - 2026-08-03
 
 - Sostituito il flusso di autenticazione REST presunto con il client dedicato `GPExeGraphQLClient` e la mutation verificata `TokenAuth` inviata via `POST` JSON.

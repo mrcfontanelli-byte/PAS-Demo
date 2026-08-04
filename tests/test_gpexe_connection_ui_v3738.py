@@ -30,4 +30,5 @@ def test_settings_exposes_connection_test_and_keeps_excel_active():
     assert "Excel resta la sorgente predefinita" in app
     assert "pas_gpexe_runtime_token" in app
     assert "App settings → Secrets" in app
-    assert "Query GraphQL Team/TeamSession da acquisire e verificare." in app
+    assert '"Recupera Team Sessions"' in app
+    assert '"Importa nel database PAS"' in app
