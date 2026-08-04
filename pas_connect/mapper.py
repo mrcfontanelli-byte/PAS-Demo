@@ -297,6 +297,8 @@ def map_athlete_session_detail(
         if provider_session_id is not None
         else payload.get("team_session") or payload.get("teamsession") or payload.get("session")
     )
+    total_time = payload.get("totalTime")
+    total_time_value = total_time.get("value") if isinstance(total_time, Mapping) else None
     return {
         "provider": "gpexe",
         "provider_athlete_session_id": int(provider_athlete_session_id),
@@ -306,7 +308,10 @@ def map_athlete_session_detail(
         "track_id": payload.get("track"),
         "start_timestamp": payload.get("start_timestamp") or timing.get("start_timestamp"),
         "end_timestamp": payload.get("end_timestamp") or timing.get("end_timestamp"),
-        "duration": payload.get("duration") or payload.get("total_time") or timing.get("duration"),
+        "duration": (
+            payload.get("duration") or payload.get("total_time")
+            or total_time_value or timing.get("duration")
+        ),
         "state": payload.get("state") or status.get("state"),
         "starter": payload.get("starter"),
         "is_stats_valid": payload.get("is_stats_valid", status.get("is_stats_valid")),

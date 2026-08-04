@@ -3,7 +3,7 @@ from pathlib import Path
 app = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
 version = (Path(__file__).resolve().parents[1] / "modules" / "version.py").read_text(encoding="utf-8")
 
-assert 'APP_BUILD_VERSION = "4.11.0"' in version
+assert 'APP_BUILD_VERSION = "4.12.0"' in version
 assert "DRILL_BOXPLOT_PALETTE = [" in app
 assert app.count("#2F80ED") >= 1
 assert app.count("#BDBDBD") >= 1

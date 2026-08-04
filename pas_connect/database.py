@@ -1102,6 +1102,15 @@ class PASConnectDatabase:
                 "SELECT 1 FROM pas_metric_catalog WHERE lower(canonical_metric)=lower(?) LIMIT 1",
                 (str(canonical_metric).strip(),),
             ).fetchone() is not None
+            if not exists:
+                from modules.day_overview_provider import _profile_family
+                family = _profile_family(canonical_metric)
+                catalog_families = {
+                    _profile_family(row[0]) for row in connection.execute(
+                        "SELECT canonical_metric FROM pas_metric_catalog WHERE requires_profile=1"
+                    )
+                }
+                exists = family is not None and family in catalog_families
         if exists:
             return "VALID"
         return "CATALOG_EMPTY" if catalog_count == 0 else "ORPHAN"

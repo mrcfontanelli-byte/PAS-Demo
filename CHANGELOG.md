@@ -1,5 +1,14 @@
 # Changelog
 
+## PAS v4.12.0 - 2026-08-04
+
+- Resa provider-aware la Panoramica del giorno per Duration, Distance, Acc Events, Dec Events, Max Speed, Speed Events e metriche a soglia dotate di profilo verificato.
+- Normalizzata Duration internamente in secondi dal `totalTime` AthleteSession verificato, mantenendo la visualizzazione storica in minuti.
+- Con GPExe la Panoramica legge esclusivamente PAS Connect e non usa fallback silenziosi a Excel.
+- Le metriche Firstbeat mostrano uno stato provider esterno; metriche e profili mancanti restano N/D con messaggio leggibile.
+- Aggiunta nei Developer Tools la copertura read-only della Panoramica e ampliata Bridge Validation alle metriche integrate, senza modificare Distance e Relative Distance.
+- Aggiornato Metric Usage Registry esclusivamente in base agli utilizzi verificati nel codice.
+
 ## PAS v4.11.0 - 2026-08-04
 
 - Implementato e validato il provider GPExe di Relative Distance, disponibile nel Data Provider comune per le future integrazioni operative dedicate a Drills e Match.

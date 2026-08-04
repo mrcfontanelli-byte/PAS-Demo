@@ -130,6 +130,13 @@ class PASDataProvider(ABC):
             f"Relative Distance non disponibile per {self.display_name}."
         )
 
+    def load_day_overview_data(
+        self, source: Any, selected_date: object, **filters: Any,
+    ) -> pd.DataFrame:
+        raise DataProviderNotReadyError(
+            f"Panoramica del giorno non disponibile per {self.display_name}."
+        )
+
 
 @dataclass(frozen=True)
 class ExcelProvider(PASDataProvider):
@@ -247,6 +254,18 @@ class ExcelProvider(PASDataProvider):
         return load_excel_operational_relative_distance(
             frame, selected_date, athletes=filters.get("athletes")
         )
+
+    def load_day_overview_data(
+        self, source: Any, selected_date: object, **filters: Any,
+    ) -> pd.DataFrame:
+        frame = source.copy() if isinstance(source, pd.DataFrame) else self.load_performance_data(source)
+        target = pd.Timestamp(selected_date).normalize()
+        result = frame[pd.to_datetime(frame["Date"], errors="coerce").dt.normalize().eq(target)].copy()
+        athletes = filters.get("athletes")
+        if athletes:
+            selected = {" ".join(str(value).upper().split()) for value in athletes}
+            result = result[result["Athlete"].map(lambda value: " ".join(str(value).upper().split())).isin(selected)]
+        return result.reset_index(drop=True)
 
 
 @dataclass(frozen=True)
@@ -392,6 +411,21 @@ class GPExeProvider(PASDataProvider):
         return load_gpexe_operational_relative_distance(
             source_path, selected_date,
             drill=filters.get("drill", "Totale sessione"),
+            team_id=filters.get("team_id"), session_ids=filters.get("session_ids"),
+            athlete_ids=filters.get("athlete_ids"), athletes=filters.get("athletes"),
+        )
+
+    def load_day_overview_data(
+        self, source: Any, selected_date: object, **filters: Any,
+    ) -> pd.DataFrame:
+        source_path = Path(source)
+        if source_path.suffix.lower() not in {".sqlite", ".sqlite3", ".db"}:
+            raise DataProviderError(
+                "La Panoramica GPExe legge esclusivamente il database PAS Connect locale."
+            )
+        from modules.day_overview_provider import load_gpexe_day_overview
+        return load_gpexe_day_overview(
+            source_path, selected_date, drill=filters.get("drill", "Totale sessione"),
             team_id=filters.get("team_id"), session_ids=filters.get("session_ids"),
             athlete_ids=filters.get("athlete_ids"), athletes=filters.get("athletes"),
         )

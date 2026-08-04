@@ -160,7 +160,7 @@ def scan_metric_usage(
 
     scan_structured_block(
         root / "modules" / "config.py", "METRICS = {", "DEFAULT_DRILLS =",
-        "Dashboard", "Panoramica del giorno", ("display",),
+        "Dashboard", "Panoramica del giorno", ("display", "calculation"),
     )
     scan_structured_block(
         app, "DRILL_ANALYSIS_METRICS = {", "def safe_numeric_series",
