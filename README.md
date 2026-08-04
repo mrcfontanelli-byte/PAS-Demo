@@ -1,3 +1,9 @@
+## PAS v4.10.0 — Metric Usage Registry Foundation
+
+PAS Connect introduce il **Metric Usage Registry**, separato dal Catalogo metriche e dai profili Team/stagione. Il registry descrive modulo, vista e tipo di utilizzo di ogni metrica, con validazione `VERIFIED` / `PROBABLE` / `AMBIGUOUS` / `MANUAL`, stato enabled/required, ordine e note, senza cambiare il comportamento delle viste esistenti.
+
+Una preview read-only censisce riferimenti con file, riga, evidenza e confidenza verificata/probabile/ambigua; il database viene aggiornato soltanto dopo conferma esplicita. Gli utilizzi restano indipendenti dal provider, le metriche senza associazioni e gli utilizzi orfani sono soltanto segnalati. Excel resta predefinito e Dashboard, Drills, Match, report, grafici e calcoli restano invariati.
+
 ## PAS v4.9.0 — Session Distance Provider Integration
 
 La **Panoramica del giorno** della Dashboard integra la prima metrica operativa certificata del bridge: **Distance**. Con sorgente Excel usa il provider storico invariato; con sorgente GPExe legge esclusivamente AthleteSession e KPI dal database PAS Connect, filtra la giornata e il Team selezionati e aggrega per athlete ID, usando il nome normalizzato solo come compatibilità.

@@ -1,5 +1,15 @@
 # Changelog
 
+## PAS v4.10.0 - 2026-08-04
+
+- Aggiunta la migrazione additiva schema 9 con tabella `pas_metric_usage` e UPSERT non distruttivo.
+- Estesa la migrazione allo schema 10 con stato di validazione `VERIFIED`, `PROBABLE`, `AMBIGUOUS` o `MANUAL` e compatibilità con le associazioni già salvate.
+- Aggiunta in PAS Connect la sezione **Utilizzo metriche PAS** con filtri, conteggi, creazione e aggiornamento senza eliminazione.
+- Aggiunto il censimento read-only con provenienza file/riga e confidenza verificata, probabile o ambigua.
+- Censiti Distance, MPE Rec Avg Time e gli utilizzi reali delle metriche Firstbeat, senza mapping provider inventati.
+- Segnalate metriche senza utilizzo e associazioni orfane senza cancellazioni automatiche.
+- Nessuna modifica al comportamento di Dashboard, Drills, Match Analysis, report, grafici o calcoli.
+
 ## PAS v4.9.0 - 2026-08-04
 
 - Integrata la Distance certificata nella sola Panoramica giornaliera della Dashboard tramite il Data Provider comune.
