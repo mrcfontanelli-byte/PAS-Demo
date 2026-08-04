@@ -110,6 +110,19 @@ class PASDataProvider(ABC):
             f"La vista pilota Distance non è disponibile per {self.display_name}."
         )
 
+    def load_session_distance_data(
+        self, source: Any, selected_date: object, **filters: Any,
+    ) -> pd.DataFrame:
+        frame = self.load_pilot_distance_data(source)
+        target = pd.Timestamp(selected_date).normalize()
+        frame = frame[pd.to_datetime(frame["Date"], errors="coerce").dt.normalize().eq(target)]
+        athletes = filters.get("athletes")
+        if athletes:
+            from modules.session_distance import normalize_athlete_name
+            selected = {normalize_athlete_name(value) for value in athletes}
+            frame = frame[frame["Athlete"].map(normalize_athlete_name).isin(selected)]
+        return frame.reset_index(drop=True)
+
 
 @dataclass(frozen=True)
 class ExcelProvider(PASDataProvider):
@@ -334,6 +347,22 @@ class GPExeProvider(PASDataProvider):
         from pas_connect.pas_bridge import load_pilot_distance_frame
 
         return load_pilot_distance_frame(source_path)
+
+    def load_session_distance_data(
+        self, source: Any, selected_date: object, **filters: Any,
+    ) -> pd.DataFrame:
+        source_path = Path(source)
+        if source_path.suffix.lower() not in {".sqlite", ".sqlite3", ".db"}:
+            raise DataProviderError(
+                "La Distance operativa GPExe legge esclusivamente il database PAS Connect locale."
+            )
+        from modules.session_distance import load_gpexe_operational_distance
+        return load_gpexe_operational_distance(
+            source_path, selected_date,
+            drill=filters.get("drill", "Totale sessione"),
+            team_id=filters.get("team_id"), session_ids=filters.get("session_ids"),
+            athlete_ids=filters.get("athlete_ids"), athletes=filters.get("athletes"),
+        )
 
 
 DEFAULT_PROVIDER_ID = "excel"

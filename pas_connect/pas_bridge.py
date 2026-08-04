@@ -72,8 +72,10 @@ def load_pilot_distance_frame(database_path: str | Path) -> pd.DataFrame:
     sql = """
         SELECT s.start_timestamp AS Date,
                COALESCE(a.player_name, 'GPExe Athlete ' || d.provider_player_id) AS Athlete,
+               d.provider_player_id AS athlete_id,
                k.value AS distance_value, k.uom AS distance_uom,
                d.provider_session_id AS team_session_id,
+               s.team_id AS team_id,
                d.provider_athlete_session_id AS athlete_session_id,
                k.source AS kpi_source
         FROM gpexe_athlete_session_kpis k
@@ -90,7 +92,7 @@ def load_pilot_distance_frame(database_path: str | Path) -> pd.DataFrame:
         frame = pd.read_sql_query(sql, connection)
     columns = [
         "Date", "Athlete", "Distance (m)", "TeamSession ID",
-        "AthleteSession ID", "Source",
+        "AthleteSession ID", "Athlete ID", "Team ID", "Source",
     ]
     if frame.empty:
         return pd.DataFrame(columns=columns)
@@ -103,9 +105,64 @@ def load_pilot_distance_frame(database_path: str | Path) -> pd.DataFrame:
         "Distance (m)": distance,
         "TeamSession ID": frame["team_session_id"],
         "AthleteSession ID": frame["athlete_session_id"],
+        "Athlete ID": frame["athlete_id"],
+        "Team ID": frame["team_id"],
         "Source": "GPExe",
     })
     return result.dropna(subset=["Date", "Athlete", "Distance (m)"]).reset_index(drop=True)
+
+
+def session_exists_on_date(
+    database_path: str | Path,
+    selected_date: object,
+    *,
+    team_id: object | None = None,
+    session_ids: Iterable[int] | None = None,
+) -> bool:
+    path = Path(database_path)
+    target = pd.Timestamp(selected_date).strftime("%Y-%m-%d")
+    clauses = ["substr(start_timestamp, 1, 10)=?"]
+    params: list[object] = [target]
+    if team_id not in (None, ""):
+        clauses.append("CAST(team_id AS TEXT)=?")
+        params.append(str(team_id))
+    selected = tuple(sorted({int(value) for value in (session_ids or [])}))
+    if selected:
+        clauses.append(f"provider_session_id IN ({','.join('?' for _ in selected)})")
+        params.extend(selected)
+    with sqlite3.connect(path) as connection:
+        return connection.execute(
+            f"SELECT 1 FROM gpexe_team_sessions WHERE {' AND '.join(clauses)} LIMIT 1",
+            params,
+        ).fetchone() is not None
+
+
+def load_session_distance_frame(
+    database_path: str | Path,
+    selected_date: object,
+    *,
+    team_id: object | None = None,
+    session_ids: Iterable[int] | None = None,
+    athlete_ids: Iterable[object] | None = None,
+    athletes: Iterable[str] | None = None,
+) -> pd.DataFrame:
+    """Distance GPExe giornaliera, filtrata senza consultare Excel."""
+    frame = load_pilot_distance_frame(database_path)
+    target = pd.Timestamp(selected_date).normalize()
+    frame = frame[pd.to_datetime(frame["Date"], errors="coerce").dt.normalize().eq(target)]
+    if team_id not in (None, ""):
+        frame = frame[frame["Team ID"].astype("string").eq(str(team_id))]
+    selected_sessions = {str(value) for value in (session_ids or [])}
+    if selected_sessions:
+        frame = frame[frame["TeamSession ID"].astype("string").isin(selected_sessions)]
+    selected_athlete_ids = {str(value) for value in (athlete_ids or [])}
+    if selected_athlete_ids:
+        frame = frame[frame["Athlete ID"].astype("string").isin(selected_athlete_ids)]
+    elif athletes:
+        normalized = {" ".join(str(value).upper().split()) for value in athletes}
+        keys = frame["Athlete"].map(lambda value: " ".join(str(value).upper().split()))
+        frame = frame[keys.isin(normalized)]
+    return frame.reset_index(drop=True)
 
 
 def load_pas_performance_frame(

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 import re
+import sqlite3
 from typing import Any, BinaryIO, TextIO
 
 
@@ -38,6 +39,23 @@ PROVIDER_REGISTRY = {
     ),
     "VALD": ProviderDefinition("VALD", "CSV", False, "Provider CSV futuro; import non implementato."),
 }
+
+
+def has_catalogued_distance(database_path: str | Path) -> bool:
+    """Distance deve esistere nel catalogo GPExe e non richiedere profilo."""
+    path = Path(database_path)
+    if not path.is_file():
+        return False
+    try:
+        with sqlite3.connect(path) as connection:
+            row = connection.execute(
+                """SELECT requires_profile FROM pas_metric_catalog
+                WHERE lower(canonical_metric)='distance' AND provider='GPExe'
+                ORDER BY id LIMIT 1"""
+            ).fetchone()
+        return row is not None and not bool(row[0])
+    except sqlite3.Error:
+        return False
 
 
 def _header_line(source: str | Path | BinaryIO | TextIO) -> tuple[str, str]:

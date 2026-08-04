@@ -1,3 +1,9 @@
+## PAS v4.9.0 — Session Distance Provider Integration
+
+La **Panoramica del giorno** della Dashboard integra la prima metrica operativa certificata del bridge: **Distance**. Con sorgente Excel usa il provider storico invariato; con sorgente GPExe legge esclusivamente AthleteSession e KPI dal database PAS Connect, filtra la giornata e il Team selezionati e aggrega per athlete ID, usando il nome normalizzato solo come compatibilità.
+
+Excel resta la sorgente predefinita e la scelta Excel/GPExe rimane manuale. La modalità GPExe non effettua fallback silenzioso: distingue giornata assente, Distance non utilizzabile e filtro Drill non ancora supportato. Un pannello tecnico confronta i valori giornalieri per atleta con tolleranza configurabile; sedute o atleti presenti in una sola sorgente sono indicati separatamente. Tutte le altre viste, metriche, Dashboard, report, grafici e calcoli continuano a usare il percorso esistente.
+
 ## PAS v4.8.0 — Metric Catalog Foundation
 
 PAS Connect include un catalogo master separato dei mapping metrici. Il catalogo può generare una preview leggendo esclusivamente le intestazioni di un template CSV, distingue campi contestuali e metriche prestative e conserva provider, modalità di acquisizione, categoria, tipo, unità e necessità di un profilo Team/stagione. Le righe delle sessioni non vengono lette né importate.
