@@ -104,11 +104,11 @@ class GPExeGraphQLClient:
                 continue
             if status in {408, 429, 500, 502, 503, 504}:
                 if attempts > self.config.max_retries:
-                    raise APIRequestError(self._http_error_message(status, raw))
+                    raise APIRequestError(self._http_error_message(status, raw, operation_name))
                 self.sleep(self._retry_delay(response_headers, attempts))
                 continue
             if not 200 <= status < 300:
-                raise APIRequestError(self._http_error_message(status, raw))
+                raise APIRequestError(self._http_error_message(status, raw, operation_name))
             decoded = self._decode(raw, status=status, headers=response_headers, url=url)
             if not isinstance(decoded, Mapping):
                 raise APIRequestError("Risposta GraphQL GPExe non valida.")
@@ -185,9 +185,24 @@ class GPExeGraphQLClient:
             )
             raise APIRequestError(f"Risposta GPExe non JSON o non valida ({detail}).") from exc
 
-    @staticmethod
-    def _http_error_message(status: int, raw: bytes) -> str:
-        return f"GPExe ha restituito HTTP {status}."
+    def _http_error_message(
+        self, status: int, raw: bytes, operation_name: str | None = None,
+    ) -> str:
+        operation = str(operation_name or "operazione GraphQL")
+        detail = ""
+        try:
+            decoded = json.loads(raw.decode("utf-8")) if raw else None
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            decoded = None
+        if isinstance(decoded, Mapping) and isinstance(decoded.get("errors"), list):
+            messages = [
+                str(item.get("message"))
+                for item in decoded["errors"]
+                if isinstance(item, Mapping) and item.get("message")
+            ]
+            if messages:
+                detail = f" · errori GraphQL: {self._redact('; '.join(messages))}"
+        return f"Operazione {operation} · HTTP {status}{detail}."
 
     def _redact(self, message: str) -> str:
         safe = str(message)

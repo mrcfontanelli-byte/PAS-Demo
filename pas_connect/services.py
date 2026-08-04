@@ -1,102 +1,193 @@
-"""Servizi applicativi tipizzati per le risorse GPExe Foundation."""
+"""Servizi applicativi GraphQL per le risorse GPExe verificate."""
 from __future__ import annotations
+
 from dataclasses import dataclass
 from typing import Any, Mapping
 
 from .client import GPExeClient
 from .exceptions import APIRequestError
 
-TEAM_SELECTOR_QUERY = """
-query TeamSelector($sort: String, $active: Boolean, $offset: Int, $pageSize: Int, $after: String) {
-  teams(sort: $sort, active: $active, offset: $offset, pageSize: $pageSize, after: $after) {
-    id name season sport limitedClub { name } startDate
+
+TEAM_SELECTOR_QUERY = """query TeamSelector(
+  $clubId: ID
+  $first: Int
+  $skip: Int
+  $sort: String
+  $active: Boolean
+) {
+  res: teams(
+    clubId: $clubId
+    first: $first
+    skip: $skip
+    sort: $sort
+    active: $active
+  ) {
+    content {
+      id
+      season
+      limitedClub {
+        name
+        __typename
+      }
+      sport
+      name
+      startDate
+      __typename
+    }
+    count
+    offset
+    pageSize
+    __typename
   }
-}
-"""
+}"""
 
-GET_TEAM_SESSIONS_QUERY = """
-query GetTeamSessions($teamId: ID!, $startDate: Date!, $endDate: Date!, $offset: Int, $pageSize: Int, $after: String) {
-  teamSessions(teamId: $teamId, startDate: $startDate, endDate: $endDate, offset: $offset, pageSize: $pageSize, after: $after) {
-    id category startTimestamp duration athleteCount matchCycle nature tags notes
-    state drill drillEnabled drillCount
+
+GET_TEAM_SESSIONS_QUERY = """fragment TeamSessionCategoryTypeFields on TeamSessionCategoryType {
+  id
+  createdOn
+  updatedOn
+  color
+  occurrences
+  isDeletable
+  name
+  __typename
+}
+
+query GetTeamSessions(
+  $teamId: ID!
+  $first: Int
+  $skip: Int
+  $startDate: Date
+  $endDate: Date
+  $sort: String
+  $matchDistance: [Int]
+  $matchCycle: [Int]
+  $categoriesIds: [ID]
+  $athleteIds: [ID]
+  $types: [SessionType]
+  $multipleFilters: String
+) {
+  res: teamSessions(
+    teamId: $teamId
+    first: $first
+    skip: $skip
+    startDate: $startDate
+    endDate: $endDate
+    sort: $sort
+    matchDistance: $matchDistance
+    matchCycle: $matchCycle
+    categoriesIds: $categoriesIds
+    athleteIds: $athleteIds
+    types: $types
+    multipleFilters: $multipleFilters
+  ) {
+    content {
+      id
+      category {
+        ...TeamSessionCategoryTypeFields
+        __typename
+      }
+      hasRpe
+      totalTime {
+        value
+        uom
+        unit
+        __typename
+      }
+      startTimestamp
+      drillEnabled
+      drill
+      originalTeamsession {
+        id
+        drill
+        __typename
+      }
+      drillCount
+      matchCycle
+      nature
+      tags {
+        id
+        name
+        __typename
+      }
+      athleteCount
+      notes
+      duration
+      rpeSet {
+        id
+        __typename
+      }
+      state
+      __typename
+    }
+    count
+    __typename
   }
-}
-"""
-
-
-def _items(payload: Any) -> list[dict[str, Any]]:
-    if isinstance(payload, list):
-        return [dict(x) for x in payload if isinstance(x, Mapping)]
-    if isinstance(payload, Mapping):
-        for key in ("results", "data", "items", "objects"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                return [dict(x) for x in value if isinstance(x, Mapping)]
-        edges = payload.get("edges")
-        if isinstance(edges, list):
-            return [dict(edge["node"]) for edge in edges if isinstance(edge, Mapping) and isinstance(edge.get("node"), Mapping)]
-    return []
-
-
-def _page_state(payload: Any, received: int) -> tuple[bool, dict[str, object]]:
-    """Restituisce se esiste un'altra pagina e le variabili per richiederla."""
-    if not isinstance(payload, Mapping):
-        return False, {}
-    page_info = payload.get("pageInfo")
-    if isinstance(page_info, Mapping):
-        has_next = bool(page_info.get("hasNextPage"))
-        cursor = page_info.get("endCursor")
-        return has_next and cursor not in (None, ""), {"after": cursor} if has_next else {}
-    count = payload.get("count")
-    offset = payload.get("offset", 0)
-    page_size = payload.get("pageSize", payload.get("limit", received))
-    if isinstance(count, int) and isinstance(offset, int) and isinstance(page_size, int) and page_size > 0:
-        next_offset = offset + page_size
-        return next_offset < count, {"offset": next_offset, "pageSize": page_size}
-    return False, {}
+}"""
 
 
 def _all_pages(
-    client: GPExeClient, query: str, operation_name: str,
-    variables: Mapping[str, object], root_field: str,
+    client: GPExeClient,
+    graphql_query: str,
+    operation_name: str,
+    variables: Mapping[str, object],
+    *,
+    page_size: int,
+    max_pages: int,
 ) -> list[dict[str, Any]]:
+    """Recupera tutte le pagine GPExe mediante ``first`` e ``skip``."""
+    if page_size <= 0:
+        raise ValueError("La dimensione pagina GraphQL deve essere positiva.")
     collected: list[dict[str, Any]] = []
-    seen: set[object] = set()
-    page_variables = dict(variables)
-    for _ in range(1000):
+    seen_ids: set[str] = set()
+    skip = 0
+    for _ in range(max_pages):
+        page_variables = {**variables, "first": page_size, "skip": skip}
         response = client.graphql(
-            query, variables=page_variables, operation_name=operation_name,
+            graphql_query,
+            variables=page_variables,
+            operation_name=operation_name,
         )
         data = response.get("data")
-        page = data.get(root_field) if isinstance(data, Mapping) else None
-        rows = _items(page)
+        result = data.get("res") if isinstance(data, Mapping) else None
+        if not isinstance(result, Mapping):
+            raise APIRequestError(f"La risposta GraphQL {operation_name} non contiene data.res.")
+        content = result.get("content")
+        if not isinstance(content, list):
+            raise APIRequestError(f"La risposta GraphQL {operation_name} non contiene data.res.content.")
+        rows = [dict(row) for row in content if isinstance(row, Mapping)]
         for row in rows:
             identity = row.get("id")
-            key: object = ("id", str(identity)) if identity not in (None, "") else ("row", repr(sorted(row.items())))
-            if key not in seen:
-                seen.add(key)
+            key = str(identity) if identity not in (None, "") else repr(sorted(row.items()))
+            if key not in seen_ids:
+                seen_ids.add(key)
                 collected.append(row)
-        has_next, next_variables = _page_state(page, len(rows))
-        if not has_next:
+        received = len(rows)
+        if received == 0:
             return collected
-        updated = {**page_variables, **next_variables}
-        if updated == page_variables:
+        skip += received
+        count = result.get("count")
+        if isinstance(count, int) and skip >= count:
             return collected
-        page_variables = updated
+        if not isinstance(count, int) and received < page_size:
+            return collected
     raise APIRequestError(f"Paginazione GraphQL {operation_name} oltre il limite di sicurezza.")
 
 
 @dataclass
 class GPExeServices:
     client: GPExeClient
+    page_size: int = 100
+    max_pages: int = 1000
 
-    def teams(self, **query: object) -> list[dict[str, Any]]:
+    def teams(self, *, active: bool = True, **query: object) -> list[dict[str, Any]]:
         return _all_pages(
             self.client,
             TEAM_SELECTOR_QUERY,
             "TeamSelector",
-            {"sort": "club__name,name,season", "active": True},
-            "teams",
+            {"sort": "club__name,name,season", "active": bool(active)},
+            page_size=self.page_size,
+            max_pages=self.max_pages,
         )
 
     def team_sessions(
@@ -110,7 +201,8 @@ class GPExeServices:
             GET_TEAM_SESSIONS_QUERY,
             "GetTeamSessions",
             {"teamId": str(team_id), "startDate": str(start_date), "endDate": str(end_date)},
-            "teamSessions",
+            page_size=self.page_size,
+            max_pages=self.max_pages,
         )
 
     def athletes(self, **query: object) -> list[dict[str, Any]]:

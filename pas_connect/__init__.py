@@ -8,7 +8,7 @@ non verrà attivata esplicitamente in una release successiva.
 from .config import DataProvider, GPExeConfig, PASConnectConfig
 from .client import GPExeClient, GPExeGraphQLClient
 from .services import GPExeServices
-from .provider import GPExeAPIDataProvider
+from .provider import GPExeAPIDataProvider, invalidate_team_filter_state
 from .storage import SnapshotStore
 from .database import PASConnectDatabase, ReferenceImportResult, SessionImportResult, SessionDetailImportResult, AthleteSessionImportResult
 from .sync import sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, sync_tracks, run_full_sync, FullSyncEvent
@@ -22,6 +22,7 @@ __all__ = [
     "GPExeGraphQLClient",
     "GPExeServices",
     "GPExeAPIDataProvider",
+    "invalidate_team_filter_state",
     "SnapshotStore",
     "PASConnectDatabase",
     "ReferenceImportResult",

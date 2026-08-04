@@ -1,5 +1,14 @@
 # Changelog
 
+## PAS v4.3.1 - 2026-08-04
+
+- Allineate `TeamSelector` e `GetTeamSessions` alle query GraphQL ufficiali catturate dal portale GPExe.
+- Corretta la lettura dei risultati da `data.res.content` e la paginazione mediante `first`, `skip` e `data.res.count`.
+- Rimossi gli argomenti GraphQL non verificati `offset`, `pageSize` e `after` e ogni gestione cursor-based.
+- Aggiunta diagnostica sicura per HTTP 400 con operationName, status ed eventuali errori GraphQL redatti.
+- Aggiunto in PAS Connect il filtro Team **Attivi / Scaduti / Tutti**, con deduplicazione per ID e invalidazione mirata di Team e TeamSession al cambio filtro.
+- Nessuna modifica a UI PAS Connect, database Excel, Dashboard, report, grafici, calcoli o pipeline dati.
+
 ## PAS v4.3.0 - 2026-08-04
 
 - Implementate esclusivamente le query GraphQL verificate `TeamSelector` e `GetTeamSessions` nel provider GPExe.

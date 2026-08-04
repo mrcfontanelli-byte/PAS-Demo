@@ -32,3 +32,6 @@ def test_settings_exposes_connection_test_and_keeps_excel_active():
     assert "App settings → Secrets" in app
     assert '"Recupera Team Sessions"' in app
     assert '"Importa nel database PAS"' in app
+    assert '"Team da mostrare"' in app
+    assert '("Attivi", "Scaduti", "Tutti")' in app
+    assert "invalidate_team_filter_state" in app
