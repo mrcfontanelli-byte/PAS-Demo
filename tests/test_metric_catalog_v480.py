@@ -150,7 +150,7 @@ def test_schema_8_catalog_upsert_and_manual_changes_are_preserved(tmp_path):
     database = PASConnectDatabase(tmp_path / "catalog.sqlite3")
     proposal = _by_provider_name(_preview())["distance (m)"]
     catalog_id, inserted = database.upsert_metric_catalog_entry(proposal)
-    assert SCHEMA_VERSION == 8
+    assert SCHEMA_VERSION == 10
     assert inserted is True
     edited = {**proposal, "id": catalog_id, "display_name": "Distance manuale"}
     same_id, inserted = database.upsert_metric_catalog_entry(edited)

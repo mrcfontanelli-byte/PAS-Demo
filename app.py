@@ -65,6 +65,7 @@ from pas_connect.pas_bridge import available_sessions, has_compatible_performanc
 from pas_connect.mapper import map_team_session, map_graphql_athlete, map_graphql_athlete_session
 from pas_connect.endpoints import TEAMS
 from pas_connect.catalog_ui import render_metric_catalog_section
+from pas_connect.usage_ui import render_metric_usage_section
 
 
 st.set_page_config(
@@ -3091,6 +3092,7 @@ with settings_column:
                 )
 
         render_metric_catalog_section(PASConnectDatabase.default(base_dir))
+        render_metric_usage_section(PASConnectDatabase.default(base_dir), base_dir)
 
         st.markdown("##### Connessione GPExe")
         st.caption(

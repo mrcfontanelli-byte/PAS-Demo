@@ -15,7 +15,7 @@ import sqlite3
 from typing import Any, Iterator, Mapping
 
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 10
 
 
 @dataclass(frozen=True)
@@ -303,8 +303,36 @@ class PASConnectDatabase:
 
                 CREATE INDEX IF NOT EXISTS idx_pas_metric_catalog_provider_category
                 ON pas_metric_catalog(provider, category);
+
+                CREATE TABLE IF NOT EXISTS pas_metric_usage (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    canonical_metric TEXT NOT NULL,
+                    module TEXT NOT NULL,
+                    view_name TEXT NOT NULL,
+                    usage_type TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'MANUAL'
+                        CHECK(status IN ('VERIFIED','PROBABLE','AMBIGUOUS','MANUAL')),
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    required INTEGER NOT NULL DEFAULT 0,
+                    display_order INTEGER NOT NULL DEFAULT 0,
+                    notes TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(canonical_metric, module, view_name, usage_type)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_pas_metric_usage_module_view
+                ON pas_metric_usage(module, view_name, usage_type);
                 """
             )
+            usage_columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(pas_metric_usage)")
+            }
+            if "status" not in usage_columns:
+                connection.execute(
+                    """ALTER TABLE pas_metric_usage ADD COLUMN status TEXT NOT NULL
+                    DEFAULT 'MANUAL' CHECK(status IN ('VERIFIED','PROBABLE','AMBIGUOUS','MANUAL'))"""
+                )
             athlete_columns = {row[1] for row in connection.execute("PRAGMA table_info(gpexe_athletes)")}
             for name, definition in {
                 "team_id": "INTEGER", "jersey_number": "TEXT",
@@ -843,6 +871,107 @@ class PASConnectDatabase:
                 "SELECT * FROM pas_metric_catalog ORDER BY is_contextual DESC, provider, category, display_name"
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_metric_usage(self) -> list[dict[str, Any]]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT * FROM pas_metric_usage
+                ORDER BY module, view_name, display_order, canonical_metric, usage_type"""
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def upsert_metric_usage(self, entry: Mapping[str, Any]) -> tuple[int, bool]:
+        """Crea o aggiorna un'associazione senza cancellare utilizzi esistenti."""
+        from .metric_usage import MODULES, USAGE_STATUSES, USAGE_TYPES
+
+        row = dict(entry)
+        for field in ("canonical_metric", "module", "view_name", "usage_type"):
+            row[field] = str(row.get(field) or "").strip()
+            if not row[field]:
+                raise ValueError(f"Campo utilizzo obbligatorio mancante: {field}.")
+        if row["module"] not in MODULES:
+            raise ValueError(f"Modulo PAS non supportato: {row['module']}.")
+        if row["usage_type"] not in USAGE_TYPES:
+            raise ValueError(f"Usage type non supportato: {row['usage_type']}.")
+        row["status"] = str(row.get("status") or "MANUAL").strip().upper()
+        if row["status"] not in USAGE_STATUSES:
+            raise ValueError(f"Status utilizzo non supportato: {row['status']}.")
+        row["enabled"] = bool(row.get("enabled", True))
+        row["required"] = bool(row.get("required", False))
+        row["display_order"] = int(row.get("display_order") or 0)
+        row["notes"] = str(row.get("notes") or "").strip() or None
+        now = datetime.now(timezone.utc).isoformat()
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            usage_id = row.get("id")
+            if usage_id not in (None, ""):
+                existing = connection.execute(
+                    "SELECT id FROM pas_metric_usage WHERE id=?", (int(usage_id),)
+                ).fetchone()
+            else:
+                existing = connection.execute(
+                    """SELECT id FROM pas_metric_usage
+                    WHERE canonical_metric=? AND module=? AND view_name=? AND usage_type=?""",
+                    (row["canonical_metric"], row["module"], row["view_name"], row["usage_type"]),
+                ).fetchone()
+            if existing:
+                usage_id = int(existing["id"])
+                connection.execute(
+                    """UPDATE pas_metric_usage SET canonical_metric=?, module=?, view_name=?,
+                    usage_type=?, status=?, enabled=?, required=?, display_order=?, notes=?, updated_at=?
+                    WHERE id=?""",
+                    (row["canonical_metric"], row["module"], row["view_name"],
+                     row["usage_type"], row["status"], int(row["enabled"]), int(row["required"]),
+                     row["display_order"], row["notes"], now, usage_id),
+                )
+                inserted = False
+            else:
+                cursor = connection.execute(
+                    """INSERT INTO pas_metric_usage(
+                    canonical_metric, module, view_name, usage_type, status, enabled, required,
+                    display_order, notes, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+                    (row["canonical_metric"], row["module"], row["view_name"],
+                     row["usage_type"], row["status"], int(row["enabled"]), int(row["required"]),
+                     row["display_order"], row["notes"], now, now),
+                )
+                usage_id = int(cursor.lastrowid)
+                inserted = True
+            connection.commit()
+        return int(usage_id), inserted
+
+    def import_metric_usage_proposals(self, proposals: list[Mapping[str, Any]]) -> tuple[int, int]:
+        inserted = updated = 0
+        for proposal in proposals:
+            _, was_inserted = self.upsert_metric_usage(proposal)
+            inserted += int(was_inserted)
+            updated += int(not was_inserted)
+        return inserted, updated
+
+    def orphan_metric_usage(self) -> list[dict[str, Any]]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT u.* FROM pas_metric_usage u
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM pas_metric_catalog c
+                    WHERE lower(c.canonical_metric)=lower(u.canonical_metric)
+                ) ORDER BY u.id"""
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def catalog_metrics_without_usage(self) -> list[str]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT DISTINCT c.canonical_metric FROM pas_metric_catalog c
+                WHERE c.is_contextual=0 AND NOT EXISTS (
+                    SELECT 1 FROM pas_metric_usage u
+                    WHERE lower(u.canonical_metric)=lower(c.canonical_metric)
+                ) ORDER BY lower(c.canonical_metric)"""
+            ).fetchall()
+        return [str(row[0]) for row in rows]
 
     def upsert_metric_catalog_entry(self, entry: Mapping[str, Any]) -> tuple[int, bool]:
         """UPSERT esplicito e transazionale di un mapping del catalogo."""
