@@ -76,23 +76,31 @@ def map_tag(payload: Mapping[str, Any]) -> dict[str, Any]:
 
 def map_team_session(payload: Mapping[str, Any]) -> dict[str, Any]:
     session_id = int(_required(payload, "id"))
+    category = payload.get("category")
+    category_id = category.get("id") if isinstance(category, Mapping) else category
+    category_name = category.get("name") if isinstance(category, Mapping) else category
+    duration = payload.get("duration")
     return {
         "provider": "gpexe",
         "provider_session_id": session_id,
         "team_id": payload.get("team"),
-        "category_id": payload.get("category"),
-        "session_name": str(payload.get("name") or "").strip() or f"GPExe Session {session_id}",
+        "category_id": category_id if isinstance(category_id, (int, float)) else None,
+        "session_name": str(payload.get("name") or category_name or payload.get("nature") or "").strip() or f"GPExe Session {session_id}",
         "notes": payload.get("notes"),
-        "start_timestamp": payload.get("start_timestamp"),
+        "start_timestamp": payload.get("startTimestamp") or payload.get("start_timestamp"),
         "end_timestamp": payload.get("end_timestamp"),
-        "total_time": payload.get("total_time"),
+        "total_time": duration if duration is not None else payload.get("total_time"),
         "is_stats_valid": bool(payload.get("is_stats_valid", False)),
-        "drill_enabled": bool(payload.get("drill_enabled", False)),
+        "drill_enabled": bool(payload.get("drillEnabled", payload.get("drill_enabled", False))),
         "state": payload.get("state"),
         "submitted_by": payload.get("submitted_by"),
         "created_at": payload.get("created_on"),
         "updated_at": payload.get("updated_on"),
         "tags": payload.get("tags") if isinstance(payload.get("tags"), list) else [],
+        "athlete_count": payload.get("athleteCount"),
+        "match_cycle": payload.get("matchCycle"),
+        "drill": payload.get("drill"),
+        "drill_count": payload.get("drillCount"),
     }
 
 def parse_headers_table(table_data: Mapping[str, Any]) -> list[dict[str, Any]]:

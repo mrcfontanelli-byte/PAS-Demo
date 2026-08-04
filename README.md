@@ -1,3 +1,9 @@
+## PAS v4.3.0 — GPExe Team e TeamSession
+
+PAS Connect rende operative le query GraphQL ufficiali `TeamSelector` e `GetTeamSessions`. Dopo l'autenticazione, il selettore Team viene popolato dal provider; l'utente può scegliere un intervallo precompilato sugli ultimi 7 giorni, recuperare le TeamSession, selezionarle in modo multiplo e importarle nel database SQLite locale PAS Connect.
+
+Le TeamSession mostrano categoria, data, durata, numero atleti, match cycle, stato e informazioni drill. L'importazione non modifica l'Excel e non alimenta Dashboard, report, grafici, calcoli o Match Analysis. Athletes, Tracks e metriche dinamiche restano disabilitati con il messaggio “Funzione disponibile in una release successiva.” La soluzione resta compatibile con Streamlit Cloud, considerando effimera la persistenza SQLite locale sul cloud.
+
 ## PAS v4.2.0 — GPExe GraphQL Foundation
 
 PAS Connect usa esclusivamente la mutation GraphQL verificata `TokenAuth` tramite `POST` JSON verso l'endpoint configurabile `https://e15.gpexe.com/ui/v2/`. La connessione gestisce `token`, `refreshToken` e `isActive` soltanto nella sessione corrente e presenta errori leggibili per credenziali rifiutate, account non attivo, timeout, errori HTTP, risposte non JSON o campo GraphQL `errors`, senza includere credenziali, token, cookie o header di autorizzazione nella diagnostica.
