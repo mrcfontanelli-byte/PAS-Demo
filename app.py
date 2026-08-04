@@ -58,9 +58,9 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, invalidate_team_filter_state
-from pas_connect.pas_bridge import available_sessions
-from pas_connect.mapper import map_team_session
+from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS
+from pas_connect.pas_bridge import available_sessions, has_compatible_performance_rows
+from pas_connect.mapper import map_team_session, map_graphql_athlete, map_graphql_athlete_session
 from pas_connect.endpoints import TEAMS
 
 
@@ -2835,6 +2835,7 @@ provider_catalog = get_available_data_providers()
 requested_provider_id = st.session_state.get("pas_data_source", "excel")
 provider_selection = resolve_data_provider(requested_provider_id)
 data_provider = provider_selection.provider
+gpexe_analysis_fallback_message = st.session_state.get("pas_gpexe_analysis_fallback_message")
 
 database_column, settings_column = st.sidebar.columns(2, gap="small")
 
@@ -2867,20 +2868,40 @@ with database_column:
             database_excel_source = str(excel_path)
 
             gpexe_api_database = PASConnectDatabase.default(base_dir).path
-            gpexe_api_ready = gpexe_api_database.is_file() and bool(available_sessions(gpexe_api_database))
+            gpexe_api_has_sessions = gpexe_api_database.is_file() and bool(available_sessions(gpexe_api_database))
             prefer_gpexe_api = st.session_state.get("pas_gpexe_input_mode", "API sincronizzata") == "API sincronizzata"
+            selected_api_sessions = st.session_state.get("pas_gpexe_active_session_ids", [])
+            gpexe_api_ready = gpexe_api_has_sessions and has_compatible_performance_rows(
+                gpexe_api_database,
+                session_ids=selected_api_sessions,
+            )
             if using_gpexe and prefer_gpexe_api and gpexe_api_ready:
                 database_path = gpexe_api_database
-                selected_api_sessions = st.session_state.get("pas_gpexe_active_session_ids", [])
                 gpexe_source = {
                     "kind": "gpexe_api",
                     "database_path": gpexe_api_database,
                     "session_ids": selected_api_sessions,
                 }
-                raw = data_provider.load_performance_data(gpexe_source, source_name=gpexe_api_database.name)
-                match_source = data_provider.load_match_analysis_data(gpexe_source, source_name=gpexe_api_database.name)
-                report_source = data_provider.load_report_data(gpexe_source, source_name=gpexe_api_database.name)
-                database_source_label = "GPExe API sincronizzata"
+                try:
+                    raw = data_provider.load_performance_data(gpexe_source, source_name=gpexe_api_database.name)
+                    match_source = data_provider.load_match_analysis_data(gpexe_source, source_name=gpexe_api_database.name)
+                    report_source = data_provider.load_report_data(gpexe_source, source_name=gpexe_api_database.name)
+                    database_source_label = "GPExe API sincronizzata"
+                    st.session_state.pop("pas_gpexe_analysis_fallback_message", None)
+                    gpexe_analysis_fallback_message = None
+                except Exception:
+                    gpexe_analysis_fallback_message = (
+                        "I dati GPExe sono stati importati nel database PAS Connect, ma il collegamento "
+                        "alle analisi sarà disponibile in una release successiva. Il PAS continua "
+                        "temporaneamente a utilizzare Excel."
+                    )
+                    st.session_state["pas_gpexe_analysis_fallback_message"] = gpexe_analysis_fallback_message
+                    st.session_state["pas_data_source"] = "excel"
+                    database_path = excel_path
+                    raw = excel_provider.load_performance_data(database_excel_source, source_name=excel_path.name)
+                    match_source = excel_provider.load_match_analysis_data(database_excel_source, source_name=excel_path.name)
+                    report_source = excel_provider.load_report_data(database_excel_source, source_name=excel_path.name)
+                    database_source_label = "Fallback Excel · dati GPExe non ancora collegati alle analisi"
             elif using_gpexe and uploaded_database is not None:
                 database_path = None
                 gpexe_source = uploaded_database.getvalue()
@@ -2889,6 +2910,14 @@ with database_column:
                 report_source = data_provider.load_report_data(gpexe_source, source_name=uploaded_database.name)
                 database_source_label = "Export GPExe caricato"
             elif using_gpexe:
+                if prefer_gpexe_api and gpexe_api_has_sessions:
+                    gpexe_analysis_fallback_message = (
+                        "I dati GPExe sono stati importati nel database PAS Connect, ma il collegamento "
+                        "alle analisi sarà disponibile in una release successiva. Il PAS continua "
+                        "temporaneamente a utilizzare Excel."
+                    )
+                    st.session_state["pas_gpexe_analysis_fallback_message"] = gpexe_analysis_fallback_message
+                    st.session_state["pas_data_source"] = "excel"
                 database_path = excel_path
                 raw = excel_provider.load_performance_data(database_excel_source, source_name=excel_path.name)
                 match_source = excel_provider.load_match_analysis_data(database_excel_source, source_name=excel_path.name)
@@ -2930,6 +2959,8 @@ with database_column:
             f"{database_source_label}: "
             f"{database_info['source_name']}"
         )
+        if gpexe_analysis_fallback_message:
+            st.info(gpexe_analysis_fallback_message)
         st.caption(
             f"{database_info['players']} giocatori · "
             f"{database_info['sessions']} sessioni · "
@@ -2972,6 +3003,8 @@ with settings_column:
         use_container_width=True,
     ):
         st.caption(f"PAS · {APP_EDITION} v{APP_BUILD_VERSION}")
+        if gpexe_analysis_fallback_message:
+            st.info(gpexe_analysis_fallback_message)
         st.caption(
             f"Database: {database_info['source_name']} · "
             f"ultimo dato "
@@ -3135,6 +3168,8 @@ with settings_column:
             st.caption("Excel e il PAS Core restano invariati: l'import usa esclusivamente il database locale PAS Connect.")
 
             st.markdown("##### Team e TeamSession")
+            teams_foundation = []
+            selected_team = {}
             try:
                 foundation_config = GPExeConfig(
                     base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
@@ -3165,6 +3200,8 @@ with settings_column:
                         "Team", range(len(teams_foundation)),
                         format_func=lambda index: _entity_label(teams_foundation[index]),
                         key="pas_gpexe_selected_team_index",
+                        on_change=invalidate_athlete_context_state,
+                        args=(st.session_state,),
                     )
                     selected_team = teams_foundation[selected_team_index]
                     default_end = pd.Timestamp.today().date()
@@ -3183,6 +3220,7 @@ with settings_column:
                                 team_id, start_date=start_date.isoformat(), end_date=end_date.isoformat(),
                             )
                     sessions_foundation = st.session_state.get("pas_gpexe_team_sessions", [])
+                    selected_ids: set[str] = set()
                     if sessions_foundation:
                         st.success(f"TeamSession recuperate: {len(sessions_foundation)}")
                         session_rows = []
@@ -3204,6 +3242,8 @@ with settings_column:
                             pd.DataFrame(session_rows), hide_index=True, use_container_width=True,
                             disabled=[column for column in session_rows[0] if column != "Seleziona"],
                             key="pas_gpexe_session_selection",
+                            on_change=invalidate_athlete_session_state,
+                            args=(st.session_state,),
                         )
                         selected_ids = set(selection.loc[selection["Seleziona"], "id"].astype(str))
                         if st.button("Importa nel database PAS", key="pas_gpexe_import_sessions", use_container_width=True):
@@ -3222,8 +3262,219 @@ with settings_column:
             except Exception as exc:
                 st.error(f"Recupero GPExe non riuscito: {exc}")
 
-            st.markdown("##### Athletes, Tracks e metriche dinamiche")
-            st.info("Funzione disponibile in una release successiva.")
+            st.markdown("##### Athletes")
+            if teams_foundation:
+                athlete_filter = st.selectbox(
+                    "Athletes da mostrare", ("Current", "Expired", "Tutti"), index=0,
+                    key="pas_gpexe_athlete_filter", on_change=invalidate_athlete_context_state,
+                    args=(st.session_state,),
+                )
+                athlete_scope = st.selectbox(
+                    "Atleti da mostrare",
+                    ("Tutti gli associati al Team", "Solo partecipanti alle TeamSession selezionate"),
+                    index=1 if team_filter == "Scaduti" else 0,
+                    key="pas_gpexe_athlete_scope",
+                    on_change=invalidate_athlete_context_state,
+                    args=(st.session_state,),
+                )
+                participants_only = athlete_scope == "Solo partecipanti alle TeamSession selezionate"
+                needs_expired = athlete_filter in {"Expired", "Tutti"}
+                automatic_club_id = resolve_team_club_id(selected_team)
+                club_id = automatic_club_id
+                if needs_expired:
+                    club_id = resolve_team_club_id(
+                        selected_team,
+                        st.text_input(
+                            "Club ID GPExe",
+                            value=automatic_club_id or "",
+                            key=f"pas_gpexe_club_id_{selected_team.get('id')}",
+                            on_change=invalidate_athlete_context_state,
+                            args=(st.session_state,),
+                            help="Necessario per gli Athletes Expired; viene precompilato quando disponibile nel Team.",
+                        ),
+                    )
+                if needs_expired and club_id in (None, ""):
+                    st.warning("Club ID non disponibile per recuperare gli Athletes Expired.")
+                if participants_only and not selected_ids:
+                    st.info("Seleziona almeno una TeamSession per ricostruire la rosa del periodo.")
+                if st.button("Recupera Athletes", key="pas_gpexe_get_athletes", use_container_width=True):
+                    try:
+                        if participants_only and not selected_ids:
+                            raise ValueError("Seleziona almeno una TeamSession per ricostruire la rosa del periodo.")
+                        if not participants_only and needs_expired and club_id in (None, ""):
+                            raise ValueError("Club ID non disponibile per recuperare gli Athletes Expired.")
+                        if participants_only:
+                            participant_results = []
+                            participant_errors = []
+                            for team_session_id in selected_ids:
+                                try:
+                                    participant_results.append({
+                                        "team_session_id": team_session_id,
+                                        "result": foundation_provider.get_team_session_athlete_sessions(
+                                            team_session_id, template_id=None, drill=None,
+                                        ),
+                                    })
+                                except Exception as exc:
+                                    participant_errors.append(team_session_error_diagnostic(
+                                        exc, team_session_id=team_session_id, template_id=None,
+                                        drill=None, fields_limit=None,
+                                        secrets=(foundation_config.token, foundation_config.password),
+                                    ))
+                            fetched_athletes = athletes_from_team_session_results(participant_results)
+                            st.session_state["pas_gpexe_athlete_session_results"] = participant_results
+                            st.session_state["pas_gpexe_athlete_session_errors"] = participant_errors
+                            diagnostics = {
+                                "operationName": "TeamSessionAthletesession",
+                                "received": sum(len(bundle["result"].get("athleteSessions") or []) for bundle in participant_results),
+                                "count": len(fetched_athletes), "serverReceived": len(fetched_athletes),
+                                "teamMatched": len(fetched_athletes), "teamId": str(selected_team.get("id")),
+                            }
+                        else:
+                            tab = {"Current": "CURRENT", "Expired": "EXPIRED", "Tutti": None}[athlete_filter]
+                            fetched_athletes = foundation_provider.get_athletes(
+                                selected_team.get("id"), club_id=club_id, tab=tab,
+                            )
+                            diagnostics = foundation_provider.services.last_diagnostics
+                        store_athlete_fetch_result(
+                            st.session_state, fetched_athletes, diagnostics,
+                        )
+                    except Exception as exc:
+                        st.session_state["pas_gpexe_athletes_loaded"] = True
+                        st.session_state["pas_gpexe_athletes_diagnostics"] = {
+                            "operationName": "Athletes", "error": str(exc),
+                        }
+                        st.error(f"Recupero Athletes non riuscito: {exc}")
+                athletes_foundation = st.session_state.get("pas_gpexe_athletes", [])
+                athletes_diagnostics = st.session_state.get("pas_gpexe_athletes_diagnostics", {})
+                if athletes_diagnostics:
+                    diagnostic_text = (
+                        f"operationName: {athletes_diagnostics.get('operationName', 'Athletes')} · "
+                        f"ricevuti dal server: {athletes_diagnostics.get('serverReceived', athletes_diagnostics.get('received', 0))} · "
+                        f"appartenenti al Team: {athletes_diagnostics.get('teamMatched', athletes_diagnostics.get('received', 0))} · "
+                        f"count server: {athletes_diagnostics.get('count', 'n/d')} · "
+                        f"teamId: {athletes_diagnostics.get('teamId', selected_team.get('id', 'n/d'))}"
+                    )
+                    if athletes_diagnostics.get("error"):
+                        diagnostic_text += f" · errore: {athletes_diagnostics['error']}"
+                    st.caption(diagnostic_text)
+                if athletes_foundation:
+                    athlete_rows = [{
+                        "Seleziona": False, "id": item.get("id"),
+                        "cognome": item.get("lastName"), "nome": item.get("firstName"),
+                        "shortName": item.get("shortName"), "attivo": item.get("isActive"),
+                        "hasTracks": item.get("hasTracks"),
+                        "Presenze TeamSession": item.get("teamSessionAppearances"),
+                    } for item in athletes_foundation]
+                    athlete_selection = st.data_editor(
+                        pd.DataFrame(athlete_rows), hide_index=True, use_container_width=True,
+                        disabled=[column for column in athlete_rows[0] if column != "Seleziona"],
+                        key="pas_gpexe_athlete_selection",
+                    )
+                    selected_athlete_ids = set(
+                        athlete_selection.loc[athlete_selection["Seleziona"], "id"].astype(str)
+                    )
+                    if st.button("Importa Athletes nel database PAS", key="pas_gpexe_import_athletes", use_container_width=True):
+                        chosen = [item for item in athletes_foundation if str(item.get("id")) in selected_athlete_ids]
+                        if not chosen:
+                            st.warning("Seleziona almeno un Athlete da importare.")
+                        else:
+                            mapped = [map_graphql_athlete(item, team_id=selected_team.get("id")) for item in chosen]
+                            inserted, updated = PASConnectDatabase.default().upsert_graphql_athletes(mapped)
+                            st.success(f"Athletes importati: {inserted} nuovi · {updated} aggiornati.")
+                elif st.session_state.get("pas_gpexe_athletes_loaded") and not athletes_diagnostics.get("error"):
+                    if int(athletes_diagnostics.get("serverReceived") or 0) > 0 and int(athletes_diagnostics.get("teamMatched") or 0) == 0:
+                        st.info("Nessun atleta associato al Team selezionato.")
+                    else:
+                        st.info("Nessun atleta trovato per il Team e il filtro selezionati.")
+
+                st.markdown("##### Athlete Sessions e KPI")
+                template_id = st.text_input("Template ID (opzionale)", key="pas_gpexe_template_id")
+                drill_id = st.text_input("Drill ID (opzionale)", key="pas_gpexe_drill_id")
+                fields_limit_text = st.text_input("Fields limit (opzionale)", key="pas_gpexe_fields_limit")
+                if st.button("Recupera Athlete Sessions", key="pas_gpexe_get_athlete_sessions", use_container_width=True):
+                    if not selected_ids:
+                        st.warning("Seleziona almeno una TeamSession.")
+                    else:
+                        results = []
+                        errors = []
+                        for team_session_id in selected_ids:
+                            try:
+                                result = foundation_provider.get_team_session_athlete_sessions(
+                                    team_session_id,
+                                    template_id=template_id,
+                                    drill=drill_id,
+                                    fields_limit=fields_limit_text,
+                                )
+                                results.append({"team_session_id": team_session_id, "result": result})
+                            except Exception as exc:
+                                errors.append(team_session_error_diagnostic(
+                                    exc, team_session_id=team_session_id,
+                                    template_id=template_id, drill=drill_id,
+                                    fields_limit=fields_limit_text,
+                                    secrets=(foundation_config.token, foundation_config.password),
+                                ))
+                        st.session_state["pas_gpexe_athlete_session_results"] = results
+                        st.session_state["pas_gpexe_athlete_session_errors"] = errors
+                athlete_session_results = st.session_state.get("pas_gpexe_athlete_session_results", [])
+                athlete_session_errors = normalize_team_session_error_diagnostics(
+                    st.session_state.get("pas_gpexe_athlete_session_errors", [])
+                )
+                st.session_state["pas_gpexe_athlete_session_errors"] = athlete_session_errors
+                if athlete_session_results or athlete_session_errors:
+                    summary = []
+                    for bundle in athlete_session_results:
+                        sessions = bundle["result"].get("athleteSessions") or []
+                        kpi_count = sum(len(item.get("identifierKpi") or []) + len(item.get("kpi") or []) for item in sessions)
+                        summary.append({"TeamSession": bundle["team_session_id"], "AthleteSession": len(sessions), "KPI": kpi_count, "Errori": 0})
+                    summary.extend({"TeamSession": item["teamSessionId"], "AthleteSession": 0, "KPI": 0, "Errori": 1} for item in athlete_session_errors)
+                    st.dataframe(pd.DataFrame(summary), hide_index=True, use_container_width=True)
+                    if athlete_session_errors:
+                        st.markdown("###### Diagnostica TeamSessionAthletesession")
+                        diagnostic_frame = pd.DataFrame(athlete_session_errors).reindex(
+                            columns=TEAM_SESSION_DIAGNOSTIC_COLUMNS,
+                        )
+                        st.dataframe(
+                            diagnostic_frame,
+                            hide_index=True, use_container_width=True,
+                        )
+                    if st.button("Importa Athlete Sessions e KPI nel database PAS", key="pas_gpexe_import_athlete_sessions", use_container_width=True):
+                        try:
+                            mapped_sessions = []
+                            for bundle in athlete_session_results:
+                                for item in bundle["result"].get("athleteSessions") or []:
+                                    mapped_sessions.append(map_graphql_athlete_session(
+                                        item, team_session_id=bundle["team_session_id"], template_id=template_id or None,
+                                    ))
+                            athlete_session_database = PASConnectDatabase.default()
+                            parent_sessions = [
+                                map_team_session({**item, "team": selected_team.get("id")})
+                                for item in sessions_foundation
+                                if str(item.get("id")) in {str(bundle["team_session_id"]) for bundle in athlete_session_results}
+                            ]
+                            if parent_sessions:
+                                athlete_session_database.upsert_team_sessions({"sessions": parent_sessions})
+                            encountered_athletes = athletes_from_team_session_results(athlete_session_results)
+                            if encountered_athletes:
+                                athlete_session_database.upsert_graphql_athletes([
+                                    map_graphql_athlete(item, team_id=selected_team.get("id"))
+                                    for item in encountered_athletes
+                                ])
+                            inserted, updated, tracks, kpis = athlete_session_database.upsert_graphql_athlete_sessions(mapped_sessions)
+                            st.session_state["pas_gpexe_last_athlete_session_import"] = {
+                                "status": "success",
+                                "message": f"Athlete Sessions: {inserted} nuove · {updated} aggiornate · {tracks} Tracks in UPSERT · {kpis} KPI sostituiti.",
+                            }
+                        except Exception as exc:
+                            st.session_state["pas_gpexe_last_athlete_session_import"] = {
+                                "status": "error",
+                                "message": f"Importazione Athlete Sessions e KPI non riuscita: {exc}",
+                            }
+                    last_import = st.session_state.get("pas_gpexe_last_athlete_session_import")
+                    if isinstance(last_import, dict):
+                        if last_import.get("status") == "success":
+                            st.success(str(last_import.get("message") or "Importazione completata."))
+                        else:
+                            st.error(str(last_import.get("message") or "Importazione non riuscita."))
 
             st.divider()
             st.markdown("##### Sincronizzazione completa")

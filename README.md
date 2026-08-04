@@ -1,3 +1,9 @@
+## PAS v4.4.0 — GPExe Athletes, Athlete Sessions e KPI
+
+PAS Connect recupera Athletes Current ed Expired mediante la query GraphQL ufficiale, con filtro **Current / Expired / Tutti**, paginazione `first/skip/count` e deduplicazione per ID. Gli Expired usano il `clubId` del Team selezionato quando disponibile; in sua assenza PAS Connect mostra il campo opzionale **Club ID GPExe** per l'inserimento manuale, senza hardcode.
+
+Le TeamSession selezionate possono ora caricare `TeamSessionAthletesession` con Template ID, Drill e Fields Limit opzionali. Athletes, Athlete Sessions, Tracks minimi e tutti i KPI `identifierKpi`/`kpi` vengono salvati con UPSERT nel database SQLite PAS Connect separato. Dashboard, report, grafici, calcoli, Match Analysis ed Excel non utilizzano ancora questi dati e restano invariati.
+
 ## PAS v4.3.1 — Correzione schema GraphQL GPExe
 
 PAS Connect usa le query ufficiali del portale GPExe per `TeamSelector` e `GetTeamSessions`, con alias `res`, risultati in `data.res.content` e paginazione completa tramite `first`, `skip` e `count`. Il filtro **Team da mostrare** consente di caricare Team attivi, scaduti oppure entrambi, deduplicati per ID. La diagnostica HTTP 400 indica in modo sicuro operazione, stato ed eventuali errori GraphQL senza esporre credenziali o token. Database Excel, Dashboard, report, grafici, calcoli e caricamento GPExe locale restano invariati.

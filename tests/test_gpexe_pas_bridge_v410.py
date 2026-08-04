@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 
 from pas_connect.database import PASConnectDatabase
-from pas_connect.pas_bridge import available_sessions, load_pas_performance_frame
+from pas_connect.pas_bridge import available_sessions, has_compatible_performance_rows, load_pas_performance_frame
 
 
 def test_gpexe_sqlite_bridge_builds_pas_frame(tmp_path: Path):
@@ -18,3 +18,15 @@ def test_gpexe_sqlite_bridge_builds_pas_frame(tmp_path: Path):
     assert frame.iloc[0]['Athlete'] == 'MARIO ROSSI'
     assert frame.iloc[0]['distance (m)'] == 5000
     assert frame.iloc[0]['GPExe TeamSession ID'] == 1
+    assert has_compatible_performance_rows(db.path, session_ids=[1]) is True
+
+
+def test_partial_pas_connect_database_is_not_analytically_compatible(tmp_path: Path):
+    db = PASConnectDatabase(tmp_path / "partial.sqlite3")
+    db.initialize()
+    with db.connect() as connection:
+        connection.execute("INSERT INTO gpexe_team_sessions(provider_session_id, session_name, start_timestamp, is_stats_valid, drill_enabled, synced_at, raw_json) VALUES(1,'Training','2026-08-01T10:00:00Z',1,1,'now','{}')")
+        connection.commit()
+
+    assert len(available_sessions(db.path)) == 1
+    assert has_compatible_performance_rows(db.path) is False

@@ -1,5 +1,15 @@
 # Changelog
 
+## PAS v4.4.0 - 2026-08-04
+
+- Implementata la query ufficiale `Athletes` con modalità Current, Expired e Tutti, paginazione e deduplicazione.
+- Aggiunto il campo opzionale **Club ID GPExe** per Expired/Tutti, precompilato dai dati Team quando disponibile e con invalidazione mirata dello stato Athletes.
+- Implementata `TeamSessionAthletesession` con Template ID, Drill e Fields Limit opzionali.
+- Aggiunte migrazioni SQLite additive per Athletes, Athlete Sessions e Tracks e la tabella KPI dinamici normalizzata.
+- Aggiunti UPSERT per Athletes, Athlete Sessions e Tracks e sostituzione transazionale dei KPI per evitare duplicati.
+- Resi operativi in PAS Connect recupero, selezione, riepilogo e importazione locale dei nuovi dati GPExe.
+- Nessun collegamento a Dashboard, report, grafici, calcoli o Match Analysis; database Excel invariato.
+
 ## PAS v4.3.1 - 2026-08-04
 
 - Allineate `TeamSelector` e `GetTeamSessions` alle query GraphQL ufficiali catturate dal portale GPExe.

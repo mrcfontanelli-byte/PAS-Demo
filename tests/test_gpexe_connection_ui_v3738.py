@@ -35,3 +35,5 @@ def test_settings_exposes_connection_test_and_keeps_excel_active():
     assert '"Team da mostrare"' in app
     assert '("Attivi", "Scaduti", "Tutti")' in app
     assert "invalidate_team_filter_state" in app
+    assert '"Club ID GPExe"' in app
+    assert "resolve_team_club_id" in app

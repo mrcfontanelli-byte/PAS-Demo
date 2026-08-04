@@ -44,6 +44,26 @@ def available_sessions(database_path: str | Path) -> list[dict[str, object]]:
     return [dict(row) for row in rows]
 
 
+def has_compatible_performance_rows(
+    database_path: str | Path,
+    *,
+    session_ids: Iterable[int] | None = None,
+) -> bool:
+    """Indica se il database locale e gia utilizzabile dalla pipeline analitica PAS.
+
+    Le tabelle introdotte da PAS Connect possono essere correttamente popolate anche
+    quando la conversione verso lo schema prestativo storico non e ancora possibile.
+    Quel caso e uno stato supportato, non un errore di caricamento dell'app.
+    """
+    try:
+        return not load_pas_performance_frame(
+            database_path,
+            session_ids=session_ids,
+        ).empty
+    except (FileNotFoundError, ValueError, sqlite3.Error, KeyError, TypeError, json.JSONDecodeError):
+        return False
+
+
 def load_pas_performance_frame(
     database_path: str | Path,
     *,
