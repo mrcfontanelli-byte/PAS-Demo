@@ -165,6 +165,69 @@ def load_session_distance_frame(
     return frame.reset_index(drop=True)
 
 
+def load_session_relative_distance_frame(
+    database_path: str | Path, selected_date: object, *, team_id: object | None = None,
+    session_ids: Iterable[int] | None = None, athlete_ids: Iterable[object] | None = None,
+    athletes: Iterable[str] | None = None,
+) -> pd.DataFrame:
+    """Relative Distance GPExe dal catalogo e da PAS Connect, senza fallback Excel."""
+    path = Path(database_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Database PAS Connect non trovato: {path}")
+    with sqlite3.connect(path) as connection:
+        catalog = connection.execute(
+            """SELECT provider_metric_name FROM pas_metric_catalog
+               WHERE provider='GPExe' AND active=1 AND requires_profile=0
+                 AND lower(canonical_metric) IN ('relative distance', 'avg speed')
+               ORDER BY CASE lower(canonical_metric) WHEN 'relative distance' THEN 0 ELSE 1 END, id
+               LIMIT 1"""
+        ).fetchone()
+        if catalog is None:
+            return pd.DataFrame(columns=["Date", "Athlete", "Relative Distance (m/min)",
+                                         "TeamSession ID", "AthleteSession ID", "Athlete ID",
+                                         "Team ID", "Source"])
+        provider_name = str(catalog[0] or "").strip().casefold()
+        aliases = {provider_name, provider_name.replace(" (m/min)", ""), "average_v", "avg speed"}
+        placeholders = ",".join("?" for _ in aliases)
+        sql = f"""SELECT s.start_timestamp Date,
+          COALESCE(a.player_name, 'GPExe Athlete ' || d.provider_player_id) Athlete,
+          d.provider_player_id athlete_id, k.value metric_value, k.uom metric_uom,
+          d.provider_session_id team_session_id, s.team_id team_id,
+          d.provider_athlete_session_id athlete_session_id
+          FROM gpexe_athlete_session_kpis k
+          JOIN gpexe_athlete_session_details d ON d.provider_athlete_session_id=k.provider_athlete_session_id
+          JOIN gpexe_team_sessions s ON s.provider_session_id=d.provider_session_id
+          LEFT JOIN gpexe_athletes a ON a.provider_player_id=d.provider_player_id
+          WHERE lower(k.name) IN ({placeholders})
+          ORDER BY d.provider_athlete_session_id,
+                   CASE k.source WHEN 'identifierKpi' THEN 0 ELSE 1 END, k.position"""
+        frame = pd.read_sql_query(sql, connection, params=tuple(aliases))
+    columns = ["Date", "Athlete", "Relative Distance (m/min)", "TeamSession ID",
+               "AthleteSession ID", "Athlete ID", "Team ID", "Source"]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    frame = frame.drop_duplicates("athlete_session_id", keep="first")
+    result = pd.DataFrame({"Date": pd.to_datetime(frame["Date"], errors="coerce"),
+        "Athlete": frame["Athlete"].astype("string").str.strip(),
+        "Relative Distance (m/min)": pd.to_numeric(frame["metric_value"], errors="coerce"),
+        "TeamSession ID": frame["team_session_id"], "AthleteSession ID": frame["athlete_session_id"],
+        "Athlete ID": frame["athlete_id"], "Team ID": frame["team_id"], "Source": "GPExe"})
+    target = pd.Timestamp(selected_date).normalize()
+    result = result[pd.to_datetime(result["Date"], errors="coerce").dt.normalize().eq(target)]
+    if team_id not in (None, ""):
+        result = result[result["Team ID"].astype("string").eq(str(team_id))]
+    selected_sessions = {str(v) for v in (session_ids or [])}
+    if selected_sessions:
+        result = result[result["TeamSession ID"].astype("string").isin(selected_sessions)]
+    selected_ids = {str(v) for v in (athlete_ids or [])}
+    if selected_ids:
+        result = result[result["Athlete ID"].astype("string").isin(selected_ids)]
+    elif athletes:
+        selected_names = {" ".join(str(v).upper().split()) for v in athletes}
+        result = result[result["Athlete"].map(lambda v: " ".join(str(v).upper().split())).isin(selected_names)]
+    return result.dropna(subset=["Date", "Athlete", "Relative Distance (m/min)"]).reset_index(drop=True)
+
+
 def load_pas_performance_frame(
     database_path: str | Path,
     *,

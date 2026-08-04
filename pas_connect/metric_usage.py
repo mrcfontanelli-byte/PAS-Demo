@@ -67,6 +67,7 @@ def scan_metric_usage(
     catalog_rows = list(catalog_rows)
     app = root / "app.py"
     reporting = root / "modules" / "reporting.py"
+    developer_tools = root / "modules" / "developer_tools.py"
     canonical = {
         str(row.get("canonical_metric") or "").strip().casefold():
         str(row.get("canonical_metric") or "").strip()
@@ -93,6 +94,8 @@ def scan_metric_usage(
          'if page == "🧪 Bridge Validation"', "verificata", "Confronto Distance Excel/GPExe."),
         (name("Distance"), "PAS Connect", "Distance Pilot", "display", app,
          'if page == "📏 Distance Pilot"', "verificata", "Vista pilota Distance esistente."),
+        (name("Relative Distance"), "Bridge Validation", "Bridge Validation", "comparison", developer_tools,
+         "compare_relative_distance_sources", "verificata", "Confronto Relative Distance Excel/GPExe."),
         (name("MPE Rec Avg Time"), "Match", "Match Analysis", "display", app,
          '"MPE Rec Avg Time (s)": {', "verificata", "Metrica inclusa in match_metrics."),
         (name("MPE Rec Avg Time"), "Match", "Performance Model", "calculation", app,

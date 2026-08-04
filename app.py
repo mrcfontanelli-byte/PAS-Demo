@@ -37,6 +37,7 @@ from modules.data_loader import (
 from modules.data_provider import get_available_data_providers, get_data_provider, resolve_data_provider
 from modules.bridge_validation import compare_distance_sources
 from modules.session_distance import compare_session_distance
+from modules.developer_tools import render_developer_tools
 from modules.statistics_engine import (
     descriptive_statistics,
     value_against_reference,
@@ -3093,6 +3094,12 @@ with settings_column:
 
         render_metric_catalog_section(PASConnectDatabase.default(base_dir))
         render_metric_usage_section(PASConnectDatabase.default(base_dir), base_dir)
+        render_developer_tools(
+            selected_provider=requested_provider_id,
+            active_frame=raw,
+            excel_source=database_excel_source,
+            database_path=PASConnectDatabase.default(base_dir).path,
+        )
 
         st.markdown("##### Connessione GPExe")
         st.caption(
@@ -3992,8 +3999,6 @@ page = st.radio(
     "Navigazione principale",
     [
         "🏠 Dashboard",
-        "📏 Distance Pilot",
-        "🧪 Bridge Validation",
         "📊 Period Load",
         "🗓️ Planner",
         "🔮 Forecast",
