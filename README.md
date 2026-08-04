@@ -2063,3 +2063,8 @@ PAS Connect può ora scaricare il dettaglio delle Team Sessions già sincronizza
 ## GPExe GraphQL Foundation (v4.2.0)
 
 PAS Connect autentica l'utente mediante la mutation GraphQL `TokenAuth` sull'endpoint `https://e15.gpexe.com/ui/v2/`. Token JWT, refresh token e stato dell'account rimangono esclusivamente nella sessione Streamlit. Non vengono eseguite query dati non verificate: Team e TeamSession mostrano il messaggio “Query GraphQL Team/TeamSession da acquisire e verificare.” e tutte le sincronizzazioni remote restano disabilitate. Excel, calcoli, dashboard, grafici e report non sono modificati.
+## PAS v4.11.0 — Relative Distance Provider Integration
+
+Il Data Provider comune supporta **Relative Distance**: GPExe legge esclusivamente il database PAS Connect e risolve il KPI reale tramite il Metric Catalog, con filtri per data, Team, TeamSession e atleta e senza fallback silenzioso a Excel. Il provider è pronto per le viste che già trattano la metrica, mentre il collegamento operativo a Drills e Match è rinviato alle rispettive release dedicate.
+
+Bridge Validation confronta Relative Distance con tolleranza configurabile. Distance Pilot e Bridge Validation sono strumenti tecnici disponibili esclusivamente in **Settings → PAS Connect → Developer Tools**; Excel resta la sorgente predefinita e la scelta Excel/GPExe rimane manuale. La Panoramica del giorno non espone una nuova card Relative Distance e conserva il comportamento precedente.

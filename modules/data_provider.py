@@ -123,6 +123,13 @@ class PASDataProvider(ABC):
             frame = frame[frame["Athlete"].map(normalize_athlete_name).isin(selected)]
         return frame.reset_index(drop=True)
 
+    def load_session_relative_distance_data(
+        self, source: Any, selected_date: object, **filters: Any,
+    ) -> pd.DataFrame:
+        raise DataProviderNotReadyError(
+            f"Relative Distance non disponibile per {self.display_name}."
+        )
+
 
 @dataclass(frozen=True)
 class ExcelProvider(PASDataProvider):
@@ -231,6 +238,15 @@ class ExcelProvider(PASDataProvider):
         result["AthleteSession ID"] = pd.NA
         result["Source"] = "Excel"
         return result.dropna(subset=["Date", "Athlete", "Distance (m)"]).reset_index(drop=True)
+
+    def load_session_relative_distance_data(
+        self, source: Any, selected_date: object, **filters: Any,
+    ) -> pd.DataFrame:
+        frame = source.copy() if isinstance(source, pd.DataFrame) else self.load_performance_data(source)
+        from modules.session_relative_distance import load_excel_operational_relative_distance
+        return load_excel_operational_relative_distance(
+            frame, selected_date, athletes=filters.get("athletes")
+        )
 
 
 @dataclass(frozen=True)
@@ -358,6 +374,22 @@ class GPExeProvider(PASDataProvider):
             )
         from modules.session_distance import load_gpexe_operational_distance
         return load_gpexe_operational_distance(
+            source_path, selected_date,
+            drill=filters.get("drill", "Totale sessione"),
+            team_id=filters.get("team_id"), session_ids=filters.get("session_ids"),
+            athlete_ids=filters.get("athlete_ids"), athletes=filters.get("athletes"),
+        )
+
+    def load_session_relative_distance_data(
+        self, source: Any, selected_date: object, **filters: Any,
+    ) -> pd.DataFrame:
+        source_path = Path(source)
+        if source_path.suffix.lower() not in {".sqlite", ".sqlite3", ".db"}:
+            raise DataProviderError(
+                "La Relative Distance GPExe legge esclusivamente il database PAS Connect locale."
+            )
+        from modules.session_relative_distance import load_gpexe_operational_relative_distance
+        return load_gpexe_operational_relative_distance(
             source_path, selected_date,
             drill=filters.get("drill", "Totale sessione"),
             team_id=filters.get("team_id"), session_ids=filters.get("session_ids"),

@@ -1,5 +1,14 @@
 # Changelog
 
+## PAS v4.11.0 - 2026-08-04
+
+- Implementato e validato il provider GPExe di Relative Distance, disponibile nel Data Provider comune per le future integrazioni operative dedicate a Drills e Match.
+- La sorgente GPExe usa esclusivamente PAS Connect e il Metric Catalog, con filtri per data, Team, TeamSession e atleta e senza fallback Excel.
+- Estesa Bridge Validation alla Relative Distance con tolleranza configurabile e righe presenti in una sola sorgente separate.
+- Spostati Distance Pilot e Bridge Validation in Settings → PAS Connect → Developer Tools.
+- La Panoramica del giorno resta invariata e non introduce una nuova card Relative Distance.
+- Excel resta la sorgente predefinita e la selezione della sorgente resta manuale.
+
 ## PAS v4.10.0 - 2026-08-04
 
 - Aggiunta la migrazione additiva schema 9 con tabella `pas_metric_usage` e UPSERT non distruttivo.
