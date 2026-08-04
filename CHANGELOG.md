@@ -1009,3 +1009,10 @@
 - Aggiunto il confronto riutilizzabile dei profili con stati `CONFRONTABILE`, `NON CONFRONTABILE`, `CONFIGURAZIONE MANCANTE` e `CONFIGURAZIONE NON VERIFICATA`.
 - Nessun profilo Team hardcoded; Distance Pilot e Bridge Validation Distance restano invariati.
 - Excel resta predefinito e la scelta della sorgente rimane manuale; nessuna modifica a Dashboard, report, grafici, calcoli o dati dei database.
+## PAS v4.8.0 — Metric Catalog Foundation
+
+- Aggiunto il Catalogo metriche PAS, separato dai profili Team/stagione, con preview header-only da CSV e distinzione tra campi contestuali e metriche prestative.
+- Introdotta la migrazione additiva schema 8 con tabella `pas_metric_catalog`, UPSERT transazionale e importazione che preserva le modifiche manuali.
+- Previsti i provider Excel, GPExe, Firstbeat e VALD con modalità di acquisizione esplicita, senza nuovi connettori Firstbeat/VALD.
+- Aggiunta la validazione logica e non distruttiva dei profili metrici orfani.
+- Nessuna modifica a Distance, Dashboard, report, grafici, calcoli, database Excel o dati PAS Connect esistenti.

@@ -1,3 +1,11 @@
+## PAS v4.8.0 — Metric Catalog Foundation
+
+PAS Connect include un catalogo master separato dei mapping metrici. Il catalogo può generare una preview leggendo esclusivamente le intestazioni di un template CSV, distingue campi contestuali e metriche prestative e conserva provider, modalità di acquisizione, categoria, tipo, unità e necessità di un profilo Team/stagione. Le righe delle sessioni non vengono lette né importate.
+
+Il registro provider prevede Excel (`EXCEL`), GPExe (`GRAPHQL`), Firstbeat (`MANUAL`, senza nuova connessione) e VALD (`CSV` futuro, senza import). L'importazione delle proposte preserva le modifiche manuali già salvate. I profili metrici v4.7.0 restano separati e gli eventuali profili orfani vengono soltanto segnalati, mai eliminati.
+
+Excel resta la sorgente predefinita e la scelta Excel/GPExe rimane manuale. Distance Pilot, Bridge Validation, Dashboard, report, grafici, calcoli, database Excel e dati PAS Connect esistenti restano invariati.
+
 ## PAS v4.7.0 — Metric Profiles Foundation
 
 PAS Connect permette di creare e aggiornare profili metrici configurabili per Team e stagione. Ogni profilo associa una metrica canonica PAS al nome KPI del provider e descrive soglie aperte, chiuse o semiaperte, unità, inclusività, periodo di validità e stato di verifica. Nessun profilo specifico viene precompilato: ogni configurazione deve essere salvata esplicitamente dall'utente.

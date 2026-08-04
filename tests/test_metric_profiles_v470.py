@@ -33,11 +33,11 @@ def test_schema_7_migration_is_additive_and_preserves_existing_data(tmp_path):
     database = PASConnectDatabase(path)
     database.initialize()
     with database.connect() as connection:
-        assert SCHEMA_VERSION == 7
+        assert SCHEMA_VERSION >= 7
         assert connection.execute("SELECT value FROM legacy_data WHERE id=1").fetchone()[0] == "preserved"
         assert connection.execute(
             "SELECT value FROM pas_connect_meta WHERE key='schema_version'"
-        ).fetchone()[0] == "7"
+        ).fetchone()[0] == str(SCHEMA_VERSION)
         columns = {row[1] for row in connection.execute("PRAGMA table_info(pas_metric_profiles)")}
     assert {
         "id", "team_id", "team_name", "season", "canonical_metric", "provider_metric_name",

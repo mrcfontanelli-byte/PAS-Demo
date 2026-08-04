@@ -63,6 +63,7 @@ from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServi
 from pas_connect.pas_bridge import available_sessions, has_compatible_performance_rows
 from pas_connect.mapper import map_team_session, map_graphql_athlete, map_graphql_athlete_session
 from pas_connect.endpoints import TEAMS
+from pas_connect.catalog_ui import render_metric_catalog_section
 
 
 st.set_page_config(
@@ -3079,6 +3080,8 @@ with settings_column:
                     f"{database_info['rows']} righe importate."
                 )
 
+        render_metric_catalog_section(PASConnectDatabase.default(base_dir))
+
         st.markdown("##### Connessione GPExe")
         st.caption(
             "La connessione verifica esclusivamente l'autenticazione GraphQL. "
@@ -3359,6 +3362,14 @@ with settings_column:
                     save_profile = st.form_submit_button("Salva profilo metrico", use_container_width=True)
                 if save_profile:
                     try:
+                        catalog_status = metric_profile_database.metric_profile_catalog_status(
+                            canonical_metric
+                        )
+                        if catalog_status == "ORPHAN":
+                            raise ValueError(
+                                "La metrica canonica non esiste nel Catalogo metriche PAS. "
+                                "Crea prima il relativo mapping."
+                            )
                         _, inserted = metric_profile_database.upsert_metric_profile({
                             "id": current_profile.get("id"), "team_id": profile_team_id,
                             "team_name": profile_team_name, "season": profile_season,

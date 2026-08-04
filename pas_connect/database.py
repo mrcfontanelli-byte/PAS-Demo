@@ -15,7 +15,7 @@ import sqlite3
 from typing import Any, Iterator, Mapping
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 @dataclass(frozen=True)
@@ -278,6 +278,31 @@ class PASConnectDatabase:
 
                 CREATE INDEX IF NOT EXISTS idx_pas_metric_profiles_team_season
                 ON pas_metric_profiles(team_id, season);
+
+                CREATE TABLE IF NOT EXISTS pas_metric_catalog (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    canonical_metric TEXT NOT NULL,
+                    display_name TEXT NOT NULL,
+                    provider TEXT NOT NULL,
+                    acquisition_mode TEXT NOT NULL,
+                    provider_metric_name TEXT NOT NULL DEFAULT '',
+                    category TEXT NOT NULL,
+                    metric_type TEXT NOT NULL,
+                    canonical_unit TEXT,
+                    provider_unit TEXT,
+                    value_type TEXT NOT NULL,
+                    requires_profile INTEGER NOT NULL DEFAULT 0,
+                    active INTEGER NOT NULL DEFAULT 0,
+                    is_contextual INTEGER NOT NULL DEFAULT 0,
+                    description TEXT,
+                    source_template TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(canonical_metric, provider, provider_metric_name)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_pas_metric_catalog_provider_category
+                ON pas_metric_catalog(provider, category);
                 """
             )
             athlete_columns = {row[1] for row in connection.execute("PRAGMA table_info(gpexe_athletes)")}
@@ -810,6 +835,147 @@ class PASConnectDatabase:
                     (str(team_id),),
                 ).fetchall()
         return [dict(row) for row in rows]
+
+    def list_metric_catalog(self) -> list[dict[str, Any]]:
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM pas_metric_catalog ORDER BY is_contextual DESC, provider, category, display_name"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def upsert_metric_catalog_entry(self, entry: Mapping[str, Any]) -> tuple[int, bool]:
+        """UPSERT esplicito e transazionale di un mapping del catalogo."""
+        from .metric_catalog import METRIC_TYPES, PROVIDER_REGISTRY, VALUE_TYPES
+
+        row = dict(entry)
+        required = ("canonical_metric", "display_name", "provider", "category", "metric_type", "value_type")
+        for field in required:
+            row[field] = str(row.get(field) or "").strip()
+            if not row[field]:
+                raise ValueError(f"Campo catalogo obbligatorio mancante: {field}.")
+        if row["provider"] not in PROVIDER_REGISTRY:
+            raise ValueError(f"Provider non supportato: {row['provider']}.")
+        if row["metric_type"] not in METRIC_TYPES:
+            raise ValueError(f"Tipo metrica non supportato: {row['metric_type']}.")
+        if row["value_type"] not in VALUE_TYPES:
+            raise ValueError(f"Value type non supportato: {row['value_type']}.")
+        row["acquisition_mode"] = str(
+            row.get("acquisition_mode") or PROVIDER_REGISTRY[row["provider"]].acquisition_mode
+        ).strip()
+        row["provider_metric_name"] = str(row.get("provider_metric_name") or "").strip()
+        for field in ("canonical_unit", "provider_unit", "description", "source_template"):
+            row[field] = str(row.get(field) or "").strip() or None
+        for field in ("requires_profile", "active", "is_contextual"):
+            row[field] = bool(row.get(field, False))
+        now = datetime.now(timezone.utc).isoformat()
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            catalog_id = row.get("id")
+            if catalog_id not in (None, ""):
+                existing = connection.execute(
+                    "SELECT id FROM pas_metric_catalog WHERE id=?", (int(catalog_id),)
+                ).fetchone()
+            else:
+                existing = connection.execute(
+                    """SELECT id FROM pas_metric_catalog
+                    WHERE canonical_metric=? AND provider=? AND provider_metric_name=?""",
+                    (row["canonical_metric"], row["provider"], row["provider_metric_name"]),
+                ).fetchone()
+            if existing:
+                catalog_id = int(existing["id"])
+                connection.execute(
+                    """UPDATE pas_metric_catalog SET canonical_metric=?, display_name=?, provider=?,
+                    acquisition_mode=?, provider_metric_name=?, category=?, metric_type=?,
+                    canonical_unit=?, provider_unit=?, value_type=?, requires_profile=?, active=?,
+                    is_contextual=?, description=?, source_template=?, updated_at=? WHERE id=?""",
+                    (
+                        row["canonical_metric"], row["display_name"], row["provider"],
+                        row["acquisition_mode"], row["provider_metric_name"], row["category"],
+                        row["metric_type"], row["canonical_unit"], row["provider_unit"],
+                        row["value_type"], int(row["requires_profile"]), int(row["active"]),
+                        int(row["is_contextual"]), row["description"], row["source_template"],
+                        now, catalog_id,
+                    ),
+                )
+                inserted = False
+            else:
+                cursor = connection.execute(
+                    """INSERT INTO pas_metric_catalog(
+                    canonical_metric, display_name, provider, acquisition_mode, provider_metric_name,
+                    category, metric_type, canonical_unit, provider_unit, value_type,
+                    requires_profile, active, is_contextual, description, source_template,
+                    created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        row["canonical_metric"], row["display_name"], row["provider"],
+                        row["acquisition_mode"], row["provider_metric_name"], row["category"],
+                        row["metric_type"], row["canonical_unit"], row["provider_unit"],
+                        row["value_type"], int(row["requires_profile"]), int(row["active"]),
+                        int(row["is_contextual"]), row["description"], row["source_template"],
+                        now, now,
+                    ),
+                )
+                catalog_id = int(cursor.lastrowid)
+                inserted = True
+            connection.commit()
+        return int(catalog_id), inserted
+
+    def import_metric_catalog_proposals(self, proposals: list[Mapping[str, Any]]) -> tuple[int, int]:
+        """Inserisce solo mapping assenti, preservando ogni modifica manuale esistente."""
+        inserted = preserved = 0
+        for proposal in proposals:
+            key = (
+                str(proposal.get("canonical_metric") or "").strip(),
+                str(proposal.get("provider") or "").strip(),
+                str(proposal.get("provider_metric_name") or "").strip(),
+            )
+            self.initialize()
+            with self.connect() as connection:
+                exists = connection.execute(
+                    """SELECT 1 FROM pas_metric_catalog
+                    WHERE canonical_metric=? AND provider=? AND provider_metric_name=?""", key
+                ).fetchone() is not None
+            if exists:
+                preserved += 1
+            else:
+                self.upsert_metric_catalog_entry(proposal)
+                inserted += 1
+        return inserted, preserved
+
+    def orphan_metric_profiles(self) -> list[dict[str, Any]]:
+        """Segnala profili senza metrica canonica catalogata, senza modificarli."""
+        self.initialize()
+        with self.connect() as connection:
+            rows = connection.execute(
+                """SELECT p.* FROM pas_metric_profiles p
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM pas_metric_catalog c
+                    WHERE lower(c.canonical_metric)=lower(p.canonical_metric)
+                ) ORDER BY p.id"""
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def metric_exists_in_catalog(self, canonical_metric: str) -> bool:
+        self.initialize()
+        with self.connect() as connection:
+            return connection.execute(
+                "SELECT 1 FROM pas_metric_catalog WHERE lower(canonical_metric)=lower(?) LIMIT 1",
+                (str(canonical_metric).strip(),),
+            ).fetchone() is not None
+
+    def metric_profile_catalog_status(self, canonical_metric: str) -> str:
+        """Valida la relazione logica senza imporre foreign key ai profili storici."""
+        self.initialize()
+        with self.connect() as connection:
+            catalog_count = int(connection.execute("SELECT COUNT(*) FROM pas_metric_catalog").fetchone()[0])
+            exists = connection.execute(
+                "SELECT 1 FROM pas_metric_catalog WHERE lower(canonical_metric)=lower(?) LIMIT 1",
+                (str(canonical_metric).strip(),),
+            ).fetchone() is not None
+        if exists:
+            return "VALID"
+        return "CATALOG_EMPTY" if catalog_count == 0 else "ORPHAN"
 
     def upsert_metric_profile(self, profile: Mapping[str, Any]) -> tuple[int, bool]:
         """Inserisce o aggiorna un profilo preservandone identità e storico."""
