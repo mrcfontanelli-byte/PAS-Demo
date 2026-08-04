@@ -1,3 +1,11 @@
+## PAS v4.7.0 — Metric Profiles Foundation
+
+PAS Connect permette di creare e aggiornare profili metrici configurabili per Team e stagione. Ogni profilo associa una metrica canonica PAS al nome KPI del provider e descrive soglie aperte, chiuse o semiaperte, unità, inclusività, periodo di validità e stato di verifica. Nessun profilo specifico viene precompilato: ogni configurazione deve essere salvata esplicitamente dall'utente.
+
+La migrazione additiva dello schema PAS Connect conserva i dati esistenti e introduce `pas_metric_profiles` con UPSERT sicuro e storico distinto per Team, stagione e validità. Bridge Validation espone inoltre una funzione riutilizzabile per certificare la confrontabilità semantica dei futuri KPI a soglia. Distance totale resta esclusa dai profili e continua a funzionare come nella v4.6.0.
+
+Excel resta la sorgente predefinita; la scelta Excel/GPExe rimane manuale. Dashboard, report, grafici, calcoli, database Excel e dati GPExe già presenti non vengono modificati.
+
 ## PAS v4.6.0 — Bridge Validation
 
 La vista interna **Bridge Validation** confronta la metrica pilota Distance tra Excel e GPExe esclusivamente per le date presenti in entrambe le sorgenti, usando anche il TeamSession ID quando entrambe lo espongono. Il risultato mostra Distance per atleta, differenza assoluta e stato OK/DIFFERENTE, con riepilogo e sedute non confrontabili separate.

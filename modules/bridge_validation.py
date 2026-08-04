@@ -5,6 +5,8 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from pas_connect.metric_profiles import MetricProfileComparison, compare_metric_profiles
+
 
 @dataclass(frozen=True)
 class BridgeValidationResult:
