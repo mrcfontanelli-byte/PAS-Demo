@@ -1,5 +1,14 @@
 # Changelog
 
+## PAS v4.9.0 - 2026-08-04
+
+- Integrata la Distance certificata nella sola Panoramica giornaliera della Dashboard tramite il Data Provider comune.
+- Il provider GPExe legge esclusivamente il database PAS Connect, usa il Catalogo metriche e aggrega per atleta e giornata senza mescolare righe Excel.
+- Aggiunti filtri per data, Team, TeamSession e atleta, conversione km→m e deduplicazione per AthleteSession già garantita dal bridge.
+- Aggiunti messaggi distinti per giornata assente, Distance assente e Drill non supportato, senza fallback silenzioso a Excel.
+- Aggiunto il confronto tecnico giornaliero Excel/GPExe per atleta, con tolleranza e record presenti in una sola fonte separati.
+- Excel resta predefinito e la selezione della sorgente resta esclusivamente manuale; nessuna scrittura nei database e nessuna modifica a report, grafici o calcoli.
+
 ## PAS v4.6.0 - 2026-08-04
 
 - Aggiunta la vista interna di sviluppo **Bridge Validation** per il confronto Distance Excel/GPExe.

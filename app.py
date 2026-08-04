@@ -36,6 +36,7 @@ from modules.data_loader import (
 )
 from modules.data_provider import get_available_data_providers, get_data_provider, resolve_data_provider
 from modules.bridge_validation import compare_distance_sources
+from modules.session_distance import compare_session_distance
 from modules.statistics_engine import (
     descriptive_statistics,
     value_against_reference,
@@ -384,7 +385,6 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
 
 def require_demo_login() -> None:
     if st.session_state.get("pas_demo_authenticated"):
@@ -1132,7 +1132,7 @@ def render_metric_card_header(
 {reference_html}
 {stats_html}
 """
-    else:
+    elif accumulation_text:
         display_accumulation = fmt_metric(
             accumulation_value,
             metric_name,
@@ -1154,6 +1154,16 @@ def render_metric_card_header(
         {display_accumulation}
     </div>
 </div>
+"""
+    else:
+        html = f"""
+<div class="pas-dashboard-card-marker"></div>
+<div class="pas-card-title">{title}</div>
+<div class="pas-card-value">{display_value}</div>
+{secondary_html}
+<div class="pas-card-delta {status_class}">{delta_text}</div>
+{reference_html}
+{stats_html}
 """
 
     st.markdown(
@@ -9184,12 +9194,18 @@ day_drills = sorted(
     .unique()
 )
 
+dashboard_uses_gpexe_distance = requested_provider_id == "gpexe"
+if dashboard_uses_gpexe_distance:
+    day_drills = ["Totale sessione", *day_drills]
+
 if not day_drills:
     st.error("Nessun drill disponibile nella data selezionata.")
     st.stop()
 
 default_drill_index = (
-    day_drills.index("Full Training")
+    day_drills.index("Totale sessione")
+    if dashboard_uses_gpexe_distance
+    else day_drills.index("Full Training")
     if "Full Training" in day_drills
     else 0
 )
@@ -9202,11 +9218,45 @@ selected_drill = st.sidebar.selectbox(
     help="Sono mostrati solo i drill realmente presenti nella data selezionata.",
 )
 
+dashboard_context_drill = (
+    "Full Training"
+    if selected_drill == "Totale sessione" and "Full Training" in day_drills
+    else selected_drill
+)
 day_selected_raw = raw[
     raw["Date"].dt.normalize().eq(reference_ts.normalize())
-    & raw["Drill"].eq(selected_drill)
+    & raw["Drill"].eq(dashboard_context_drill)
 ].copy()
 day_selected_player_day = aggregate_player_day(day_selected_raw)
+
+dashboard_distance_current = pd.DataFrame(
+    columns=["Date", "Athlete", "distance (m)", "Athlete ID", "TeamSession ID"]
+)
+dashboard_distance_error = None
+dashboard_gpexe_distance_source = pd.DataFrame()
+if dashboard_uses_gpexe_distance:
+    try:
+        dashboard_teams = st.session_state.get("pas_gpexe_teams", [])
+        dashboard_team_index = int(st.session_state.get("pas_gpexe_selected_team_index", 0) or 0)
+        dashboard_team = (
+            dashboard_teams[dashboard_team_index]
+            if dashboard_teams and 0 <= dashboard_team_index < len(dashboard_teams)
+            else {}
+        )
+        dashboard_team_id = dashboard_team.get("id") if isinstance(dashboard_team, dict) else None
+        dashboard_session_ids = st.session_state.get("pas_gpexe_active_session_ids", [])
+        dashboard_gpexe_distance_source = get_data_provider("gpexe").load_session_distance_data(
+            PASConnectDatabase.default(base_dir).path,
+            reference_ts,
+            drill=selected_drill,
+            team_id=dashboard_team_id,
+            session_ids=dashboard_session_ids,
+        )
+        dashboard_distance_current = dashboard_gpexe_distance_source.rename(
+            columns={"Distance (m)": "distance (m)"}
+        )
+    except Exception as exc:
+        dashboard_distance_error = str(exc)
 
 # ---------------------------------------------------------
 # 3. PANORAMICA
@@ -9659,7 +9709,7 @@ period_raw = raw[
         start_ts.normalize(),
         end_ts.normalize(),
     )
-    & raw["Drill"].eq(selected_drill)
+    & raw["Drill"].eq(dashboard_context_drill)
 ].copy()
 
 period_player_day = aggregate_player_day(period_raw)
@@ -9694,7 +9744,7 @@ st.caption(
 # PANORAMICA MULTI-METRICA
 # -------------------------
 all_selected_raw = raw.copy()
-all_selected_raw = all_selected_raw[all_selected_raw["Drill"].eq(selected_drill)]
+all_selected_raw = all_selected_raw[all_selected_raw["Drill"].eq(dashboard_context_drill)]
 all_player_day = aggregate_player_day(all_selected_raw)
 
 current_players = all_player_day[
@@ -9729,6 +9779,53 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+if dashboard_uses_gpexe_distance:
+    if dashboard_distance_error:
+        if "filtro Drill" in dashboard_distance_error:
+            st.warning(dashboard_distance_error)
+        else:
+            st.info(dashboard_distance_error)
+    else:
+        st.success(
+            f"Distance GPExe · {reference_ts.strftime('%d/%m/%Y')} · "
+            f"{len(dashboard_distance_current)} atleti · totale sessione."
+        )
+    with st.expander("Verifica tecnica Distance Excel / GPExe", expanded=False):
+        dashboard_distance_tolerance = st.number_input(
+            "Tolleranza Distance giornaliera (m)",
+            min_value=0.0,
+            value=0.1,
+            step=0.1,
+            key="dashboard_distance_tolerance",
+        )
+        if dashboard_distance_error:
+            st.info(
+                "Confronto non disponibile finché la Distance GPExe della giornata "
+                "non è utilizzabile."
+            )
+        else:
+            dashboard_excel_distance = get_data_provider("excel").load_session_distance_data(
+                day_selected_raw,
+                reference_ts,
+            )
+            dashboard_distance_comparison = compare_session_distance(
+                dashboard_excel_distance,
+                dashboard_gpexe_distance_source,
+                tolerance_m=float(dashboard_distance_tolerance),
+            )
+            st.dataframe(
+                dashboard_distance_comparison.comparisons,
+                hide_index=True,
+                use_container_width=True,
+            )
+            st.caption(
+                f"Confrontati: {len(dashboard_distance_comparison.comparisons)} · "
+                f"OK: {int(dashboard_distance_comparison.comparisons['Stato'].eq('OK').sum())} · "
+                f"Differenti: {int(dashboard_distance_comparison.comparisons['Stato'].eq('DIFFERENTE').sum())} · "
+                f"solo Excel: {len(dashboard_distance_comparison.excel_only)} · "
+                f"solo GPExe: {len(dashboard_distance_comparison.gpexe_only)}."
+            )
 
 metric_groups = {
     "Internal Load": [
@@ -9791,32 +9888,41 @@ else:
             overview_column = meta["column"]
             overview_unit = meta["unit"]
             overview_decimals = int(meta.get("decimals", 0))
+            metric_period_player_day = period_player_day
+            metric_historical = historical
+            metric_current_players = current_players
+            if overview_name == "Distance (m)" and dashboard_uses_gpexe_distance:
+                metric_period_player_day = dashboard_distance_current
+                metric_current_players = dashboard_distance_current
+                metric_historical = pd.DataFrame(
+                    columns=["Date", "Cycle", "Athlete", overview_column]
+                )
 
             if overview_mode == "Team Overview":
-                overview_period_values = period_player_day[overview_column]
+                overview_period_values = metric_period_player_day[overview_column]
                 historical_entity_metric = (
-                    historical.groupby(
+                    metric_historical.groupby(
                         ["Date", "Cycle"],
                         as_index=False,
                     )[overview_column].mean()
-                    if not historical.empty
+                    if not metric_historical.empty
                     else pd.DataFrame(
                         columns=["Date", "Cycle", overview_column]
                     )
                 )
                 current_entity_metric = (
-                    current_players[overview_column].mean()
-                    if not current_players.empty
+                    metric_current_players[overview_column].mean()
+                    if not metric_current_players.empty
                     else np.nan
                 )
             else:
-                overview_period_values = period_player_day.loc[
-                    period_player_day["Athlete"].eq(overview_player),
+                overview_period_values = metric_period_player_day.loc[
+                    metric_period_player_day["Athlete"].eq(overview_player),
                     overview_column,
                 ]
                 historical_entity_metric = (
-                    historical.loc[
-                        historical["Athlete"].eq(overview_player),
+                    metric_historical.loc[
+                        metric_historical["Athlete"].eq(overview_player),
                         ["Date", "Cycle", overview_column],
                     ]
                     .groupby(
@@ -9824,17 +9930,17 @@ else:
                         as_index=False,
                     )[overview_column]
                     .mean()
-                    if not historical.empty
+                    if not metric_historical.empty
                     else pd.DataFrame(
                         columns=["Date", "Cycle", overview_column]
                     )
                 )
                 current_entity_metric = (
-                    current_players.loc[
-                        current_players["Athlete"].eq(overview_player),
+                    metric_current_players.loc[
+                        metric_current_players["Athlete"].eq(overview_player),
                         overview_column,
                     ].mean()
-                    if not current_players.empty
+                    if not metric_current_players.empty
                     else np.nan
                 )
 
@@ -9850,7 +9956,9 @@ else:
                 else player_accumulation_player_day
             )
 
-            if overview_name == "RPE":
+            if overview_name == "RPE" or (
+                overview_name == "Distance (m)" and dashboard_uses_gpexe_distance
+            ):
                 accumulated_metric_value = np.nan
                 accumulated_metric_label = ""
             else:
@@ -9969,7 +10077,7 @@ else:
                         show_selector=False,
                     )
 
-                    day_metric_players = current_players[
+                    day_metric_players = metric_current_players[
                         ["Athlete", overview_column]
                     ].copy()
                     secondary_label_column = None
