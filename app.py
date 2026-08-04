@@ -58,7 +58,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync
+from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, invalidate_team_filter_state
 from pas_connect.pas_bridge import available_sessions
 from pas_connect.mapper import map_team_session
 from pas_connect.endpoints import TEAMS
@@ -3142,12 +3142,25 @@ with settings_column:
                     timeout_seconds=30.0, verify_tls=True,
                 )
                 foundation_provider = GPExeAPIDataProvider(GPExeServices(GPExeClient(foundation_config)))
+                team_filter = st.selectbox(
+                    "Team da mostrare",
+                    ("Attivi", "Scaduti", "Tutti"),
+                    index=0,
+                    key="pas_gpexe_team_filter",
+                    on_change=invalidate_team_filter_state,
+                    args=(st.session_state,),
+                )
                 if "pas_gpexe_teams" not in st.session_state:
-                    st.session_state["pas_gpexe_teams"] = foundation_provider.get_teams()
+                    active_filter = {"Attivi": True, "Scaduti": False, "Tutti": None}[team_filter]
+                    st.session_state["pas_gpexe_teams"] = foundation_provider.get_teams(active=active_filter)
                 teams_foundation = st.session_state.get("pas_gpexe_teams", [])
                 if teams_foundation:
                     def _entity_label(item):
-                        return str(item.get("name") or item.get("title") or item.get("label") or item.get("id") or "Team")
+                        club = item.get("limitedClub")
+                        club_name = club.get("name") if isinstance(club, dict) else None
+                        parts = [item.get("name"), item.get("season"), club_name]
+                        label = " · ".join(str(part) for part in parts if part not in (None, ""))
+                        return label or str(item.get("id") or "Team")
                     selected_team_index = st.selectbox(
                         "Team", range(len(teams_foundation)),
                         format_func=lambda index: _entity_label(teams_foundation[index]),

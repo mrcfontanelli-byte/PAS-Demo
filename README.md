@@ -1,3 +1,7 @@
+## PAS v4.3.1 — Correzione schema GraphQL GPExe
+
+PAS Connect usa le query ufficiali del portale GPExe per `TeamSelector` e `GetTeamSessions`, con alias `res`, risultati in `data.res.content` e paginazione completa tramite `first`, `skip` e `count`. Il filtro **Team da mostrare** consente di caricare Team attivi, scaduti oppure entrambi, deduplicati per ID. La diagnostica HTTP 400 indica in modo sicuro operazione, stato ed eventuali errori GraphQL senza esporre credenziali o token. Database Excel, Dashboard, report, grafici, calcoli e caricamento GPExe locale restano invariati.
+
 ## PAS v4.3.0 — GPExe Team e TeamSession
 
 PAS Connect rende operative le query GraphQL ufficiali `TeamSelector` e `GetTeamSessions`. Dopo l'autenticazione, il selettore Team viene popolato dal provider; l'utente può scegliere un intervallo precompilato sugli ultimi 7 giorni, recuperare le TeamSession, selezionarle in modo multiplo e importarle nel database SQLite locale PAS Connect.
