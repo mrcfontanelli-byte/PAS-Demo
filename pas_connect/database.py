@@ -15,7 +15,7 @@ import sqlite3
 from typing import Any, Iterator, Mapping
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 @dataclass(frozen=True)
@@ -254,6 +254,30 @@ class PASConnectDatabase:
                     REFERENCES gpexe_athlete_session_details(provider_athlete_session_id)
                     ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS pas_metric_profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    team_id TEXT NOT NULL,
+                    team_name TEXT NOT NULL,
+                    season TEXT NOT NULL,
+                    canonical_metric TEXT NOT NULL,
+                    provider_metric_name TEXT NOT NULL,
+                    threshold_min REAL,
+                    threshold_max REAL,
+                    threshold_min_inclusive INTEGER NOT NULL DEFAULT 0,
+                    threshold_max_inclusive INTEGER NOT NULL DEFAULT 0,
+                    threshold_unit TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    valid_from TEXT,
+                    valid_to TEXT,
+                    verified INTEGER NOT NULL DEFAULT 0,
+                    notes TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_pas_metric_profiles_team_season
+                ON pas_metric_profiles(team_id, season);
                 """
             )
             athlete_columns = {row[1] for row in connection.execute("PRAGMA table_info(gpexe_athletes)")}
@@ -771,6 +795,90 @@ class PASConnectDatabase:
                 updated += int(exists)
             connection.commit()
         return inserted, updated
+
+    def list_metric_profiles(self, *, team_id: Any | None = None) -> list[dict[str, Any]]:
+        """Legge i profili senza modificare i dati sincronizzati GPExe."""
+        self.initialize()
+        with self.connect() as connection:
+            if team_id is None:
+                rows = connection.execute(
+                    "SELECT * FROM pas_metric_profiles ORDER BY team_name, season, canonical_metric, id"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT * FROM pas_metric_profiles WHERE team_id=? ORDER BY season, canonical_metric, id",
+                    (str(team_id),),
+                ).fetchall()
+        return [dict(row) for row in rows]
+
+    def upsert_metric_profile(self, profile: Mapping[str, Any]) -> tuple[int, bool]:
+        """Inserisce o aggiorna un profilo preservandone identità e storico."""
+        from .metric_profiles import normalize_metric_profile
+
+        row = normalize_metric_profile(profile)
+        now = datetime.now(timezone.utc).isoformat()
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            profile_id = row.get("id")
+            if profile_id not in (None, ""):
+                existing = connection.execute(
+                    "SELECT id FROM pas_metric_profiles WHERE id=?", (int(profile_id),)
+                ).fetchone()
+            else:
+                existing = connection.execute(
+                    """SELECT id FROM pas_metric_profiles
+                    WHERE team_id=? AND season=? AND canonical_metric=?
+                    AND provider_metric_name=? AND source=?
+                    AND threshold_min IS ? AND threshold_max IS ?
+                    AND threshold_min_inclusive=? AND threshold_max_inclusive=?
+                    AND threshold_unit=?
+                    AND valid_from IS ? AND valid_to IS ?""",
+                    (
+                        row["team_id"], row["season"], row["canonical_metric"],
+                        row["provider_metric_name"], row["source"],
+                        row["threshold_min"], row["threshold_max"],
+                        int(row["threshold_min_inclusive"]), int(row["threshold_max_inclusive"]),
+                        row["threshold_unit"],
+                        row["valid_from"], row["valid_to"],
+                    ),
+                ).fetchone()
+            if existing:
+                profile_id = int(existing["id"])
+                connection.execute(
+                    """UPDATE pas_metric_profiles SET
+                    team_id=?, team_name=?, season=?, canonical_metric=?, provider_metric_name=?,
+                    threshold_min=?, threshold_max=?, threshold_min_inclusive=?,
+                    threshold_max_inclusive=?, threshold_unit=?, source=?, valid_from=?, valid_to=?,
+                    verified=?, notes=?, updated_at=? WHERE id=?""",
+                    (
+                        row["team_id"], row["team_name"], row["season"], row["canonical_metric"],
+                        row["provider_metric_name"], row["threshold_min"], row["threshold_max"],
+                        int(row["threshold_min_inclusive"]), int(row["threshold_max_inclusive"]),
+                        row["threshold_unit"], row["source"], row["valid_from"], row["valid_to"],
+                        int(row["verified"]), row["notes"], now, profile_id,
+                    ),
+                )
+                inserted = False
+            else:
+                cursor = connection.execute(
+                    """INSERT INTO pas_metric_profiles(
+                    team_id, team_name, season, canonical_metric, provider_metric_name,
+                    threshold_min, threshold_max, threshold_min_inclusive, threshold_max_inclusive,
+                    threshold_unit, source, valid_from, valid_to, verified, notes, created_at, updated_at
+                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        row["team_id"], row["team_name"], row["season"], row["canonical_metric"],
+                        row["provider_metric_name"], row["threshold_min"], row["threshold_max"],
+                        int(row["threshold_min_inclusive"]), int(row["threshold_max_inclusive"]),
+                        row["threshold_unit"], row["source"], row["valid_from"], row["valid_to"],
+                        int(row["verified"]), row["notes"], now, now,
+                    ),
+                )
+                profile_id = int(cursor.lastrowid)
+                inserted = True
+            connection.commit()
+        return int(profile_id), inserted
 
     def upsert_graphql_athlete_sessions(
         self, sessions: list[Mapping[str, Any]],

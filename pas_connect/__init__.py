@@ -11,6 +11,7 @@ from .services import GPExeServices
 from .provider import GPExeAPIDataProvider, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS
 from .storage import SnapshotStore
 from .database import PASConnectDatabase, ReferenceImportResult, SessionImportResult, SessionDetailImportResult, AthleteSessionImportResult
+from .metric_profiles import MetricProfileComparison, compare_metric_profiles, format_metric_threshold, normalize_metric_profile
 from .sync import sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, sync_tracks, run_full_sync, FullSyncEvent
 from .sync import SyncPlan, build_default_sync_plan
 
@@ -38,6 +39,10 @@ __all__ = [
     "SessionImportResult",
     "SessionDetailImportResult",
     "AthleteSessionImportResult",
+    "MetricProfileComparison",
+    "compare_metric_profiles",
+    "format_metric_threshold",
+    "normalize_metric_profile",
     "sync_reference_data",
     "sync_team_sessions",
     "sync_team_session_details",

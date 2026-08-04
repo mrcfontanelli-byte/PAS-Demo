@@ -1002,3 +1002,10 @@
 ### Verifica
 - Nessuna modifica ai dati del database incluso.
 - Nessuna modifica alle funzionalità non richieste.
+## PAS v4.7.0 — Metric Profiles Foundation
+
+- Aggiunta la configurazione esplicita dei profili metrici per Team e stagione in PAS Connect.
+- Introdotta la migrazione additiva schema 7 con tabella `pas_metric_profiles`, soglie opzionali, inclusività, unità, validità, verifica, note e UPSERT non distruttivo.
+- Aggiunto il confronto riutilizzabile dei profili con stati `CONFRONTABILE`, `NON CONFRONTABILE`, `CONFIGURAZIONE MANCANTE` e `CONFIGURAZIONE NON VERIFICATA`.
+- Nessun profilo Team hardcoded; Distance Pilot e Bridge Validation Distance restano invariati.
+- Excel resta predefinito e la scelta della sorgente rimane manuale; nessuna modifica a Dashboard, report, grafici, calcoli o dati dei database.

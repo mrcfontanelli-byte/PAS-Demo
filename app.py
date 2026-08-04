@@ -59,7 +59,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS
+from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS, format_metric_threshold
 from pas_connect.pas_bridge import available_sessions, has_compatible_performance_rows
 from pas_connect.mapper import map_team_session, map_graphql_athlete, map_graphql_athlete_session
 from pas_connect.endpoints import TEAMS
@@ -3260,6 +3260,122 @@ with settings_column:
                     st.info("Nessun Team disponibile.")
             except Exception as exc:
                 st.error(f"Recupero GPExe non riuscito: {exc}")
+
+            st.markdown("##### Configurazione metriche Team")
+            st.caption(
+                "I profili descrivono il significato dei KPI per Team e stagione. "
+                "Non modificano Distance, Dashboard, report o calcoli esistenti."
+            )
+            if teams_foundation and selected_team:
+                profile_team_id = selected_team.get("id")
+                profile_team_name = str(selected_team.get("name") or "")
+                profile_season = str(selected_team.get("season") or "")
+                st.write(
+                    f"**Team ID:** {profile_team_id} · **Team:** {profile_team_name or 'n/d'} · "
+                    f"**Stagione:** {profile_season or 'n/d'}"
+                )
+                metric_profile_database = PASConnectDatabase.default()
+                stored_profiles = metric_profile_database.list_metric_profiles(team_id=profile_team_id)
+                if stored_profiles:
+                    profile_table = pd.DataFrame([{
+                        "ID": item["id"], "Metrica PAS": item["canonical_metric"],
+                        "KPI provider": item["provider_metric_name"],
+                        "Soglia": format_metric_threshold(item), "Sorgente": item["source"],
+                        "Validità": f"{item.get('valid_from') or '—'} → {item.get('valid_to') or '—'}",
+                        "Verificato": bool(item["verified"]), "Note": item.get("notes"),
+                    } for item in stored_profiles])
+                    st.dataframe(profile_table, hide_index=True, use_container_width=True)
+                else:
+                    st.info("Nessun profilo metrico salvato per il Team selezionato.")
+
+                profile_choices = [None, *stored_profiles]
+                selected_profile = st.selectbox(
+                    "Profilo da creare o aggiornare",
+                    profile_choices,
+                    format_func=lambda item: "Nuovo profilo" if item is None else (
+                        f"#{item['id']} · {item['canonical_metric']} · {item['provider_metric_name']}"
+                    ),
+                    key="pas_metric_profile_selection",
+                )
+                current_profile = selected_profile or {}
+                profile_key = str(current_profile.get("id") or "new")
+                with st.form(f"pas_metric_profile_form_{profile_key}"):
+                    canonical_metric = st.text_input(
+                        "Metrica canonica PAS", value=str(current_profile.get("canonical_metric") or "")
+                    )
+                    provider_metric_name = st.text_input(
+                        "Nome KPI provider", value=str(current_profile.get("provider_metric_name") or "")
+                    )
+                    threshold_col1, threshold_col2 = st.columns(2)
+                    with threshold_col1:
+                        threshold_min = st.text_input(
+                            "Soglia minima (opzionale)",
+                            value="" if current_profile.get("threshold_min") is None else str(current_profile["threshold_min"]),
+                        )
+                        threshold_min_inclusive = st.checkbox(
+                            "Limite minimo incluso", value=bool(current_profile.get("threshold_min_inclusive"))
+                        )
+                    with threshold_col2:
+                        threshold_max = st.text_input(
+                            "Soglia massima (opzionale)",
+                            value="" if current_profile.get("threshold_max") is None else str(current_profile["threshold_max"]),
+                        )
+                        threshold_max_inclusive = st.checkbox(
+                            "Limite massimo incluso", value=bool(current_profile.get("threshold_max_inclusive"))
+                        )
+                    threshold_unit = st.text_input(
+                        "Unità", value=str(current_profile.get("threshold_unit") or "")
+                    )
+                    source_options = ("GPExe", "Excel")
+                    current_source = str(current_profile.get("source") or "GPExe")
+                    source = st.selectbox(
+                        "Sorgente", source_options,
+                        index=source_options.index(current_source) if current_source in source_options else 0,
+                    )
+                    validity_col1, validity_col2 = st.columns(2)
+                    with validity_col1:
+                        valid_from = st.text_input(
+                            "Data inizio validità (YYYY-MM-DD, opzionale)",
+                            value=str(current_profile.get("valid_from") or ""),
+                        )
+                    with validity_col2:
+                        valid_to = st.text_input(
+                            "Data fine validità (YYYY-MM-DD, opzionale)",
+                            value=str(current_profile.get("valid_to") or ""),
+                        )
+                    verified = st.checkbox("Verificato", value=bool(current_profile.get("verified")))
+                    notes = st.text_area("Note", value=str(current_profile.get("notes") or ""))
+                    try:
+                        preview = {
+                            "threshold_min": None if not threshold_min.strip() else float(threshold_min),
+                            "threshold_max": None if not threshold_max.strip() else float(threshold_max),
+                            "threshold_min_inclusive": threshold_min_inclusive,
+                            "threshold_max_inclusive": threshold_max_inclusive,
+                            "threshold_unit": threshold_unit,
+                        }
+                        st.caption(f"Rappresentazione: {format_metric_threshold(preview)}")
+                    except ValueError:
+                        st.warning("Inserisci soglie numeriche valide.")
+                    save_profile = st.form_submit_button("Salva profilo metrico", use_container_width=True)
+                if save_profile:
+                    try:
+                        _, inserted = metric_profile_database.upsert_metric_profile({
+                            "id": current_profile.get("id"), "team_id": profile_team_id,
+                            "team_name": profile_team_name, "season": profile_season,
+                            "canonical_metric": canonical_metric, "provider_metric_name": provider_metric_name,
+                            "threshold_min": threshold_min, "threshold_max": threshold_max,
+                            "threshold_min_inclusive": threshold_min_inclusive,
+                            "threshold_max_inclusive": threshold_max_inclusive,
+                            "threshold_unit": threshold_unit, "source": source,
+                            "valid_from": valid_from, "valid_to": valid_to,
+                            "verified": verified, "notes": notes,
+                        })
+                        st.success("Profilo metrico creato." if inserted else "Profilo metrico aggiornato.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Profilo metrico non salvato: {exc}")
+            else:
+                st.info("Recupera e seleziona un Team GPExe per configurarne i profili metrici.")
 
             st.markdown("##### Athletes")
             if teams_foundation:
