@@ -104,6 +104,12 @@ class PASDataProvider(ABC):
     ) -> pd.DataFrame:
         """Carica il dataset prestativo richiesto dalla reportistica PAS."""
 
+    def load_pilot_distance_data(self, source: Any) -> pd.DataFrame:
+        """Carica Distance nello schema canonico della sola vista pilota."""
+        raise DataProviderNotReadyError(
+            f"La vista pilota Distance non è disponibile per {self.display_name}."
+        )
+
 
 @dataclass(frozen=True)
 class ExcelProvider(PASDataProvider):
@@ -194,6 +200,24 @@ class ExcelProvider(PASDataProvider):
             source_name=source_name,
             filter_configured_roster=True,
         )
+
+    def load_pilot_distance_data(self, source: Any) -> pd.DataFrame:
+        frame = source.copy() if isinstance(source, pd.DataFrame) else self.load_performance_data(source)
+        required = {"Date", "Athlete", "distance (m)"}
+        missing = sorted(required.difference(frame.columns))
+        if missing:
+            raise DataProviderError(
+                "La sorgente Excel non contiene le colonne Distance richieste: "
+                + ", ".join(missing)
+            )
+        result = frame.loc[:, ["Date", "Athlete", "distance (m)"]].copy()
+        result["Date"] = pd.to_datetime(result["Date"], errors="coerce")
+        result["Athlete"] = result["Athlete"].astype("string").str.strip()
+        result["Distance (m)"] = pd.to_numeric(result.pop("distance (m)"), errors="coerce")
+        result["TeamSession ID"] = pd.NA
+        result["AthleteSession ID"] = pd.NA
+        result["Source"] = "Excel"
+        return result.dropna(subset=["Date", "Athlete", "Distance (m)"]).reset_index(drop=True)
 
 
 @dataclass(frozen=True)
@@ -300,6 +324,16 @@ class GPExeProvider(PASDataProvider):
         source_name: str | None = None,
     ) -> pd.DataFrame:
         return self.load_performance_data(source, source_name=source_name, filter_configured_roster=True)
+
+    def load_pilot_distance_data(self, source: Any) -> pd.DataFrame:
+        source_path = Path(source)
+        if source_path.suffix.lower() not in {".sqlite", ".sqlite3", ".db"}:
+            raise DataProviderError(
+                "La vista pilota GPExe legge esclusivamente il database PAS Connect locale."
+            )
+        from pas_connect.pas_bridge import load_pilot_distance_frame
+
+        return load_pilot_distance_frame(source_path)
 
 
 DEFAULT_PROVIDER_ID = "excel"

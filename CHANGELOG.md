@@ -1,5 +1,22 @@
 # Changelog
 
+## PAS v4.6.0 - 2026-08-04
+
+- Aggiunta la vista interna di sviluppo **Bridge Validation** per il confronto Distance Excel/GPExe.
+- Limitato il confronto alle sedute comuni per data e, quando presente in entrambe le sorgenti, TeamSession ID.
+- Aggiunti confronto per atleta, differenza assoluta, stato OK/DIFFERENTE ed evidenziazione automatica.
+- Aggiunto riepilogo di sedute e atleti confrontati, coincidenti e differenti.
+- Elencate separatamente le sedute presenti in una sola sorgente, senza classificarle come errore.
+- Nessuna modifica a Dashboard, report, grafici, calcoli, database Excel o dati PAS Connect.
+
+## PAS v4.5.0 - 2026-08-04
+
+- Esteso il Data Provider comune con il contratto canonico della metrica pilota Distance.
+- Aggiunta la vista isolata **Distance Pilot**, alimentata dal provider Excel esistente oppure esclusivamente dal database PAS Connect quando è selezionato GPExe.
+- Mantenuta Excel come sorgente predefinita e rimossa ogni modifica automatica della sorgente selezionata.
+- Aggiunti test di equivalenza Excel/GPExe per Distance, deduplicazione KPI e conversione chilometri/metri.
+- Nessuna modifica alle altre Dashboard, ai report, ai grafici, ai calcoli, al database Excel o ai dati PAS Connect.
+
 ## PAS v4.4.0 - 2026-08-04
 
 - Implementata la query ufficiale `Athletes` con modalità Current, Expired e Tutti, paginazione e deduplicazione.

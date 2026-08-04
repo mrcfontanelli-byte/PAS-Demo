@@ -64,6 +64,50 @@ def has_compatible_performance_rows(
         return False
 
 
+def load_pilot_distance_frame(database_path: str | Path) -> pd.DataFrame:
+    """Legge il KPI Distance v4.4 nello schema comune della vista pilota."""
+    path = Path(database_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Database PAS Connect non trovato: {path}")
+    sql = """
+        SELECT s.start_timestamp AS Date,
+               COALESCE(a.player_name, 'GPExe Athlete ' || d.provider_player_id) AS Athlete,
+               k.value AS distance_value, k.uom AS distance_uom,
+               d.provider_session_id AS team_session_id,
+               d.provider_athlete_session_id AS athlete_session_id,
+               k.source AS kpi_source
+        FROM gpexe_athlete_session_kpis k
+        JOIN gpexe_athlete_session_details d
+          ON d.provider_athlete_session_id=k.provider_athlete_session_id
+        JOIN gpexe_team_sessions s ON s.provider_session_id=d.provider_session_id
+        LEFT JOIN gpexe_athletes a ON a.provider_player_id=d.provider_player_id
+        WHERE LOWER(k.name) IN ('distance', 'total distance', 'total_distance')
+        ORDER BY d.provider_athlete_session_id,
+                 CASE k.source WHEN 'identifierKpi' THEN 0 ELSE 1 END,
+                 k.position
+    """
+    with sqlite3.connect(path) as connection:
+        frame = pd.read_sql_query(sql, connection)
+    columns = [
+        "Date", "Athlete", "Distance (m)", "TeamSession ID",
+        "AthleteSession ID", "Source",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    frame = frame.drop_duplicates(subset=["athlete_session_id"], keep="first")
+    distance = pd.to_numeric(frame["distance_value"], errors="coerce")
+    distance = distance.where(frame["distance_uom"].str.lower().ne("km"), distance * 1000.0)
+    result = pd.DataFrame({
+        "Date": pd.to_datetime(frame["Date"], errors="coerce"),
+        "Athlete": frame["Athlete"].astype("string").str.strip(),
+        "Distance (m)": distance,
+        "TeamSession ID": frame["team_session_id"],
+        "AthleteSession ID": frame["athlete_session_id"],
+        "Source": "GPExe",
+    })
+    return result.dropna(subset=["Date", "Athlete", "Distance (m)"]).reset_index(drop=True)
+
+
 def load_pas_performance_frame(
     database_path: str | Path,
     *,
