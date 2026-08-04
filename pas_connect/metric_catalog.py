@@ -181,7 +181,7 @@ def classify_header(header: str, *, provider: str = "GPExe", source_template: st
         "provider_metric_name": header,
         "category": category,
         "metric_type": metric_type,
-        "canonical_unit": unit,
+        "canonical_unit": "s" if metric_type == "duration" else unit,
         "provider_unit": unit,
         "value_type": value_type,
         "requires_profile": requires_profile,

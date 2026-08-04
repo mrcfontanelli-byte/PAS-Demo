@@ -2068,3 +2068,8 @@ PAS Connect autentica l'utente mediante la mutation GraphQL `TokenAuth` sull'end
 Il Data Provider comune supporta **Relative Distance**: GPExe legge esclusivamente il database PAS Connect e risolve il KPI reale tramite il Metric Catalog, con filtri per data, Team, TeamSession e atleta e senza fallback silenzioso a Excel. Il provider è pronto per le viste che già trattano la metrica, mentre il collegamento operativo a Drills e Match è rinviato alle rispettive release dedicate.
 
 Bridge Validation confronta Relative Distance con tolleranza configurabile. Distance Pilot e Bridge Validation sono strumenti tecnici disponibili esclusivamente in **Settings → PAS Connect → Developer Tools**; Excel resta la sorgente predefinita e la scelta Excel/GPExe rimane manuale. La Panoramica del giorno non espone una nuova card Relative Distance e conserva il comportamento precedente.
+## PAS v4.12.0 — Day Overview Full Provider Integration
+
+La **Panoramica del giorno** mantiene aspetto, filtri e calcoli esistenti ma diventa provider-aware. Excel resta predefinito e invariato; quando GPExe viene scelto manualmente, Duration, Distance, Acc Events, Dec Events, Max Speed, Speed Events e le metriche a soglia con profilo verificato vengono lette esclusivamente dal database PAS Connect. Valori mancanti non vengono completati con Excel.
+
+Duration usa il `totalTime` della AthleteSession e viene normalizzata internamente in secondi; la card conserva la presentazione storica in minuti. Anaerobic Threshold Zone e High Intensity Training restano metriche Firstbeat e sono indicate come provider esterno. Settings → PAS Connect → Developer Tools include diagnostica di copertura e Bridge Validation multi-metrica con tolleranza e unità canonica.

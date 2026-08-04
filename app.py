@@ -38,6 +38,7 @@ from modules.data_provider import get_available_data_providers, get_data_provide
 from modules.bridge_validation import compare_distance_sources
 from modules.session_distance import compare_session_distance
 from modules.developer_tools import render_developer_tools
+from modules.day_overview_provider import OVERVIEW_METRICS, overview_coverage
 from modules.statistics_engine import (
     descriptive_statistics,
     value_against_reference,
@@ -9241,6 +9242,12 @@ dashboard_distance_current = pd.DataFrame(
 )
 dashboard_distance_error = None
 dashboard_gpexe_distance_source = pd.DataFrame()
+dashboard_gpexe_overview_current = pd.DataFrame(
+    columns=["Date", "Athlete", "Athlete ID", "TeamSession ID", *[
+        metric.column for metric in OVERVIEW_METRICS
+    ]]
+)
+dashboard_gpexe_overview_error = None
 if dashboard_uses_gpexe_distance:
     try:
         dashboard_teams = st.session_state.get("pas_gpexe_teams", [])
@@ -9252,18 +9259,20 @@ if dashboard_uses_gpexe_distance:
         )
         dashboard_team_id = dashboard_team.get("id") if isinstance(dashboard_team, dict) else None
         dashboard_session_ids = st.session_state.get("pas_gpexe_active_session_ids", [])
-        dashboard_gpexe_distance_source = get_data_provider("gpexe").load_session_distance_data(
+        dashboard_gpexe_overview_current = get_data_provider("gpexe").load_day_overview_data(
             PASConnectDatabase.default(base_dir).path,
             reference_ts,
             drill=selected_drill,
             team_id=dashboard_team_id,
             session_ids=dashboard_session_ids,
         )
-        dashboard_distance_current = dashboard_gpexe_distance_source.rename(
-            columns={"Distance (m)": "distance (m)"}
+        dashboard_distance_current = dashboard_gpexe_overview_current
+        dashboard_gpexe_distance_source = dashboard_gpexe_overview_current.rename(
+            columns={"distance (m)": "Distance (m)"}
         )
     except Exception as exc:
         dashboard_distance_error = str(exc)
+        dashboard_gpexe_overview_error = str(exc)
 
 # ---------------------------------------------------------
 # 3. PANORAMICA
@@ -9833,6 +9842,42 @@ if dashboard_uses_gpexe_distance:
                 f"solo Excel: {len(dashboard_distance_comparison.excel_only)} · "
                 f"solo GPExe: {len(dashboard_distance_comparison.gpexe_only)}."
             )
+    st.info("Anaerobic Threshold Zone: Metrica disponibile tramite provider Firstbeat.")
+    st.info("High Intensity Training: Metrica disponibile tramite provider Firstbeat.")
+    for coverage_row in overview_coverage(
+        PASConnectDatabase.default(base_dir).path,
+        team_id=locals().get("dashboard_team_id"),
+        valid_on=reference_ts,
+        session_ids=locals().get("dashboard_session_ids", []),
+    ):
+        if coverage_row["Stato"] == "MISSING":
+            missing_definition = next(
+                (item for item in OVERVIEW_METRICS if item.display == coverage_row["Metrica"]),
+                None,
+            )
+            if missing_definition is not None and missing_definition.canonical in {"Distance Z3", "Distance Z4"}:
+                st.info(
+                    f"Profilo metrico verificato mancante per {coverage_row['Metrica']}. "
+                    "Crealo in Configurazione metriche Team."
+                )
+            else:
+                st.info(
+                    f"La sessione GPExe non contiene una metrica "
+                    f"{coverage_row['Metrica']} utilizzabile."
+                )
+        elif coverage_row["Stato"] == "VERIFIED":
+            definition = next(
+                (item for item in OVERVIEW_METRICS if item.display == coverage_row["Metrica"]),
+                None,
+            )
+            if definition is not None and (
+                definition.column not in dashboard_gpexe_overview_current
+                or dashboard_gpexe_overview_current[definition.column].isna().all()
+            ):
+                st.info(
+                    f"La sessione GPExe non contiene una metrica "
+                    f"{coverage_row['Metrica']} utilizzabile."
+                )
 
 metric_groups = {
     "Internal Load": [
@@ -9898,9 +9943,9 @@ else:
             metric_period_player_day = period_player_day
             metric_historical = historical
             metric_current_players = current_players
-            if overview_name == "Distance (m)" and dashboard_uses_gpexe_distance:
-                metric_period_player_day = dashboard_distance_current
-                metric_current_players = dashboard_distance_current
+            if dashboard_uses_gpexe_distance:
+                metric_period_player_day = dashboard_gpexe_overview_current
+                metric_current_players = dashboard_gpexe_overview_current
                 metric_historical = pd.DataFrame(
                     columns=["Date", "Cycle", "Athlete", overview_column]
                 )
@@ -9963,9 +10008,7 @@ else:
                 else player_accumulation_player_day
             )
 
-            if overview_name == "RPE" or (
-                overview_name == "Distance (m)" and dashboard_uses_gpexe_distance
-            ):
+            if overview_name == "RPE" or dashboard_uses_gpexe_distance:
                 accumulated_metric_value = np.nan
                 accumulated_metric_label = ""
             else:
@@ -9992,7 +10035,7 @@ else:
             )
 
             max_speed_secondary_text = None
-            if overview_name == "Max Speed (km/h)":
+            if overview_name == "Max Speed (km/h)" and not dashboard_uses_gpexe_distance:
                 if overview_mode == "Team Overview":
                     historical_team_values = pd.to_numeric(
                         dashboard_historical_max_speed_references.get(
