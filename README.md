@@ -1,3 +1,15 @@
+## PAS v4.6.0 — Bridge Validation
+
+La vista interna **Bridge Validation** confronta la metrica pilota Distance tra Excel e GPExe esclusivamente per le date presenti in entrambe le sorgenti, usando anche il TeamSession ID quando entrambe lo espongono. Il risultato mostra Distance per atleta, differenza assoluta e stato OK/DIFFERENTE, con riepilogo e sedute non confrontabili separate.
+
+La validazione legge le due sorgenti senza modificarle. Excel resta la sorgente predefinita, la scelta operativa resta manuale e Dashboard, report, grafici e calcoli esistenti non cambiano.
+
+## PAS v4.5.0 — Bridge analitico Distance
+
+Il Data Provider comune espone la prima vista analitica pilota **Distance Pilot**. Con sorgente **Excel** usa il provider Excel esistente; con sorgente **GPExe** legge esclusivamente AthleteSession e KPI dal database SQLite PAS Connect separato. Entrambi restituiscono lo stesso schema canonico per data, atleta e Distance in metri.
+
+Excel resta la sorgente predefinita e la selezione non viene mai modificata automaticamente. Le altre Dashboard, i report, i grafici, i calcoli, il database Excel e i dati PAS Connect restano invariati.
+
 ## PAS v4.4.0 — GPExe Athletes, Athlete Sessions e KPI
 
 PAS Connect recupera Athletes Current ed Expired mediante la query GraphQL ufficiale, con filtro **Current / Expired / Tutti**, paginazione `first/skip/count` e deduplicazione per ID. Gli Expired usano il `clubId` del Team selezionato quando disponibile; in sua assenza PAS Connect mostra il campo opzionale **Club ID GPExe** per l'inserimento manuale, senza hardcode.

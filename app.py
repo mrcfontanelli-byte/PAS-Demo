@@ -35,6 +35,7 @@ from modules.data_loader import (
     database_summary,
 )
 from modules.data_provider import get_available_data_providers, get_data_provider, resolve_data_provider
+from modules.bridge_validation import compare_distance_sources
 from modules.statistics_engine import (
     descriptive_statistics,
     value_against_reference,
@@ -2896,7 +2897,6 @@ with database_column:
                         "temporaneamente a utilizzare Excel."
                     )
                     st.session_state["pas_gpexe_analysis_fallback_message"] = gpexe_analysis_fallback_message
-                    st.session_state["pas_data_source"] = "excel"
                     database_path = excel_path
                     raw = excel_provider.load_performance_data(database_excel_source, source_name=excel_path.name)
                     match_source = excel_provider.load_match_analysis_data(database_excel_source, source_name=excel_path.name)
@@ -2917,7 +2917,6 @@ with database_column:
                         "temporaneamente a utilizzare Excel."
                     )
                     st.session_state["pas_gpexe_analysis_fallback_message"] = gpexe_analysis_fallback_message
-                    st.session_state["pas_data_source"] = "excel"
                 database_path = excel_path
                 raw = excel_provider.load_performance_data(database_excel_source, source_name=excel_path.name)
                 match_source = excel_provider.load_match_analysis_data(database_excel_source, source_name=excel_path.name)
@@ -3854,6 +3853,8 @@ page = st.radio(
     "Navigazione principale",
     [
         "🏠 Dashboard",
+        "📏 Distance Pilot",
+        "🧪 Bridge Validation",
         "📊 Period Load",
         "🗓️ Planner",
         "🔮 Forecast",
@@ -3873,6 +3874,109 @@ st.divider()
 if page in {"🏠 Dashboard", "📊 Period Load"}:
     with st.expander("✨ PAS Intelligence", expanded=False):
         render_pas_assistant(raw, page)
+
+
+if page == "📏 Distance Pilot":
+    st.title("📏 Distance Pilot")
+    st.caption(
+        "Prima vista del bridge analitico comune. La sorgente si seleziona in "
+        "Settings → PAS Connect; Excel resta la scelta predefinita."
+    )
+    pilot_provider = get_data_provider(requested_provider_id)
+    pilot_source = (
+        raw if requested_provider_id == "excel"
+        else PASConnectDatabase.default(base_dir).path
+    )
+    try:
+        pilot_distance = pilot_provider.load_pilot_distance_data(pilot_source)
+    except Exception as exc:
+        st.error(f"Vista Distance non disponibile: {exc}")
+        st.stop()
+    st.info(f"Sorgente selezionata: {pilot_provider.display_name}")
+    if pilot_distance.empty:
+        st.info("Nessun valore Distance disponibile nella sorgente selezionata.")
+    else:
+        total_distance = float(pilot_distance["Distance (m)"].sum())
+        st.metric("Distance totale", f"{total_distance:,.0f} m".replace(",", "."))
+        st.dataframe(
+            pilot_distance,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Date": st.column_config.DatetimeColumn("Data", format="DD/MM/YYYY HH:mm"),
+                "Distance (m)": st.column_config.NumberColumn("Distance", format="%.1f m"),
+            },
+        )
+    st.stop()
+
+
+if page == "🧪 Bridge Validation":
+    st.title("🧪 Bridge Validation")
+    st.caption(
+        "Vista interna di sviluppo: confronta Distance soltanto nelle sedute "
+        "presenti sia in Excel sia nel database PAS Connect."
+    )
+    tolerance_m = st.number_input(
+        "Tolleranza Distance (m)", min_value=0.0, value=0.1, step=0.1,
+        help="Una differenza entro questa soglia viene classificata come OK.",
+    )
+    try:
+        validation_excel = get_data_provider("excel").load_pilot_distance_data(
+            database_excel_source
+        )
+        validation_gpexe = get_data_provider("gpexe").load_pilot_distance_data(
+            PASConnectDatabase.default(base_dir).path
+        )
+        bridge_validation = compare_distance_sources(
+            validation_excel, validation_gpexe, tolerance_m=float(tolerance_m),
+        )
+    except Exception as exc:
+        st.error(f"Bridge Validation non disponibile: {exc}")
+        st.stop()
+
+    summary = bridge_validation.summary
+    summary_columns = st.columns(4)
+    summary_columns[0].metric("Sedute confrontate", summary["sedute_confrontate"])
+    summary_columns[1].metric("Atleti confrontati", summary["atleti_confrontati"])
+    summary_columns[2].metric("Atleti coincidenti", summary["atleti_coincidenti"])
+    summary_columns[3].metric("Atleti differenti", summary["atleti_differenti"])
+
+    if bridge_validation.comparisons.empty:
+        st.info("Nessun atleta confrontabile nelle sedute comuni.")
+    else:
+        highlighted = bridge_validation.comparisons.style.apply(
+            lambda row: (
+                ["background-color: rgba(220, 53, 69, 0.22)"] * len(row)
+                if row["Stato"] == "DIFFERENTE" else [""] * len(row)
+            ),
+            axis=1,
+        )
+        st.dataframe(
+            highlighted,
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
+                "Distance Excel": st.column_config.NumberColumn(format="%.1f m"),
+                "Distance GPExe": st.column_config.NumberColumn(format="%.1f m"),
+                "Differenza assoluta": st.column_config.NumberColumn(format="%.1f m"),
+            },
+        )
+
+    st.markdown("#### Sedute non confrontabili")
+    if bridge_validation.non_comparable_sessions.empty:
+        st.info("Tutte le sedute disponibili sono confrontabili.")
+    else:
+        st.dataframe(
+            bridge_validation.non_comparable_sessions,
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.caption(
+            "Le sedute presenti in una sola sorgente sono informative e non vengono "
+            "conteggiate come differenze."
+        )
+    st.stop()
 
 
 if page == "🔬 Performance Research":

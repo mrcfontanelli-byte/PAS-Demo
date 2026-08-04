@@ -22,7 +22,7 @@ def test_gpexe_selection_uses_controlled_excel_fallback():
 def test_partial_gpexe_data_falls_back_to_excel_without_blocking_the_ui():
     app = (Path(__file__).parents[1] / "app.py").read_text(encoding="utf-8")
     assert "has_compatible_performance_rows(" in app
-    assert 'st.session_state["pas_data_source"] = "excel"' in app
+    assert 'st.session_state["pas_data_source"] = "excel"' not in app
     assert "I dati GPExe sono stati importati nel database PAS Connect" in app
     assert "Il PAS continua " in app
     assert "temporaneamente a utilizzare Excel." in app
@@ -48,6 +48,6 @@ def test_unexpected_synchronized_api_failure_is_confined_to_excel_fallback():
     block = app[start:end]
     assert "try:" in block
     assert "except Exception:" in block
-    assert 'st.session_state["pas_data_source"] = "excel"' in block
+    assert 'st.session_state["pas_data_source"] = "excel"' not in block
     assert "excel_provider.load_performance_data" in block
     assert "st.error" not in block
