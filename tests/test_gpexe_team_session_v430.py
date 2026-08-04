@@ -230,6 +230,4 @@ def test_selected_team_sessions_persist_in_pas_connect_database(tmp_path):
 def test_unimplemented_controls_keep_release_message():
     service = GPExeServices(_client(_page([], 0)))
     with pytest.raises(APIRequestError, match="Funzione disponibile in una release successiva"):
-        service.athletes()
-    with pytest.raises(APIRequestError, match="Funzione disponibile in una release successiva"):
         service.tracks()

@@ -54,6 +54,60 @@ def map_athlete(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def map_graphql_athlete(payload: Mapping[str, Any], *, team_id: object | None = None) -> dict[str, Any]:
+    athlete_id = int(_required(payload, "id"))
+    player_set = payload.get("playerSet")
+    memberships = player_set if isinstance(player_set, list) else [player_set] if isinstance(player_set, Mapping) else []
+    membership = next(
+        (item for item in memberships if isinstance(item, Mapping) and str((item.get("team") or {}).get("id")) == str(team_id)),
+        memberships[0] if memberships else {},
+    )
+    first_name = str(payload.get("firstName") or "").strip()
+    last_name = str(payload.get("lastName") or "").strip()
+    name = str(payload.get("name") or " ".join(x for x in (last_name, first_name) if x)).strip()
+    return {
+        "provider_player_id": athlete_id,
+        "external_player_id": payload.get("customId"),
+        "first_name": first_name or None,
+        "last_name": last_name or None,
+        "player_name": name or f"GPExe Athlete {athlete_id}",
+        "short_name": payload.get("shortName"),
+        "birth_date": payload.get("birthdate"),
+        "photo_url": payload.get("thumbnail"),
+        "team_id": int(team_id) if team_id not in (None, "") else None,
+        "jersey_number": membership.get("number") if isinstance(membership, Mapping) else None,
+        "is_active": payload.get("isActive"),
+        "has_tracks": payload.get("hasTracks"),
+        "raw": dict(payload),
+    }
+
+
+def map_graphql_athlete_session(
+    payload: Mapping[str, Any], *, team_session_id: object, template_id: object | None,
+) -> dict[str, Any]:
+    session_id = int(_required(payload, "id"))
+    athlete = payload.get("athlete") if isinstance(payload.get("athlete"), Mapping) else {}
+    track = payload.get("track") if isinstance(payload.get("track"), Mapping) else {}
+    total_time = payload.get("totalTime") if isinstance(payload.get("totalTime"), Mapping) else {}
+    return {
+        "provider_athlete_session_id": session_id,
+        "provider_session_id": int(team_session_id),
+        "provider_player_id": int(athlete["id"]) if athlete.get("id") not in (None, "") else None,
+        "track_id": str(track.get("id")) if track.get("id") not in (None, "") else None,
+        "master_athlete_session": payload.get("masterAthleteSession"),
+        "drill_id": payload.get("drill"),
+        "state": payload.get("state"),
+        "is_stats_valid": payload.get("isStatsValid"),
+        "starter": payload.get("starter"),
+        "total_time": dict(total_time),
+        "template_id": str(template_id) if template_id not in (None, "") else None,
+        "track": dict(track),
+        "identifier_kpi": [dict(item) for item in payload.get("identifierKpi", []) if isinstance(item, Mapping)],
+        "kpi": [dict(item) for item in payload.get("kpi", []) if isinstance(item, Mapping)],
+        "raw": dict(payload),
+    }
+
+
 def map_category(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "provider": "gpexe",
