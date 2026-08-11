@@ -30,18 +30,92 @@ def _duration_minutes(value: object) -> float | None:
         return None
 
 
-def available_sessions(database_path: str | Path) -> list[dict[str, object]]:
+def available_sessions(
+    database_path: str | Path, *, team_id: int | None = None,
+    season: str | None = None, ready_only: bool = False,
+) -> list[dict[str, object]]:
     path = Path(database_path)
     if not path.is_file():
         return []
     with sqlite3.connect(path) as connection:
         connection.row_factory = sqlite3.Row
+        clauses: list[str] = []
+        values: list[object] = []
+        if team_id is not None:
+            clauses.append("s.team_id=?")
+            values.append(int(team_id))
+        has_results = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='gpexe_session_sync_results'"
+        ).fetchone() is not None
+        if ready_only:
+            if not has_results:
+                return []
+            clauses.append("EXISTS (SELECT 1 FROM gpexe_session_sync_results r "
+                           "WHERE r.provider_session_id=s.provider_session_id "
+                           "AND r.readiness='READY' AND r.status IN ('SUCCESS','SKIPPED'))")
+        if season:
+            if not has_results:
+                return []
+            clauses.append("EXISTS (SELECT 1 FROM gpexe_session_sync_results r "
+                           "JOIN gpexe_sync_runs u ON u.id=r.sync_run_id "
+                           "WHERE r.provider_session_id=s.provider_session_id AND u.season=?)")
+            values.append(str(season))
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
         rows = connection.execute(
-            """SELECT provider_session_id, session_name, start_timestamp, team_id, state
-               FROM gpexe_team_sessions
-               ORDER BY start_timestamp DESC, provider_session_id DESC"""
+            """SELECT s.provider_session_id, s.session_name, s.start_timestamp,
+               s.team_id, s.state FROM gpexe_team_sessions s""" + where
+            + " ORDER BY s.start_timestamp DESC, s.provider_session_id DESC",
+            values,
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def available_contexts(database_path: str | Path) -> list[dict[str, object]]:
+    """Elenca Team/stagioni realmente sincronizzati, senza consultare Excel."""
+    path = Path(database_path)
+    if not path.is_file():
+        return []
+    with sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='gpexe_session_sync_results'"
+        ).fetchone() is None:
+            return []
+        rows = connection.execute(
+            """SELECT DISTINCT r.team_id, u.season
+            FROM gpexe_session_sync_results r
+            JOIN gpexe_sync_runs u ON u.id=r.sync_run_id
+            WHERE r.readiness='READY' AND r.status IN ('SUCCESS','SKIPPED')
+            ORDER BY r.team_id, u.season"""
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+
+def available_athletes(
+    database_path: str | Path, *, team_id: int, season: str,
+) -> list[dict[str, object]]:
+    """Elenca gli atleti del contesto senza usare il campo Team legacy."""
+    path = Path(database_path)
+    if not path.is_file():
+        return []
+    with sqlite3.connect(path) as connection:
+        connection.row_factory = sqlite3.Row
+        if connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' "
+            "AND name='gpexe_athlete_team_memberships'"
+        ).fetchone() is None:
+            return []
+        rows = connection.execute(
+            """SELECT a.provider_player_id, a.external_player_id, a.first_name,
+                a.last_name, a.player_name, a.short_name, m.team_id, m.season,
+                m.jersey_number, m.is_active
+            FROM gpexe_athlete_team_memberships m
+            JOIN gpexe_athletes a ON a.provider_player_id=m.provider_player_id
+            WHERE m.team_id=? AND m.season=?
+            ORDER BY a.player_name, a.provider_player_id""",
+            (int(team_id), str(season)),
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def has_compatible_performance_rows(

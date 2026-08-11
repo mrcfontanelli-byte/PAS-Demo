@@ -15,7 +15,7 @@ import sqlite3
 from typing import Any, Iterator, Mapping
 
 
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 12
 
 
 @dataclass(frozen=True)
@@ -136,6 +136,23 @@ class PASConnectDatabase:
                     raw_json TEXT NOT NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS gpexe_athlete_team_memberships (
+                    provider_player_id INTEGER NOT NULL,
+                    team_id INTEGER NOT NULL,
+                    season TEXT NOT NULL DEFAULT '',
+                    jersey_number TEXT,
+                    is_active INTEGER,
+                    first_seen_at TEXT NOT NULL,
+                    last_seen_at TEXT NOT NULL,
+                    raw_json TEXT NOT NULL DEFAULT '{}',
+                    PRIMARY KEY(provider_player_id, team_id, season),
+                    FOREIGN KEY(provider_player_id)
+                        REFERENCES gpexe_athletes(provider_player_id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_gpexe_athlete_memberships_context
+                ON gpexe_athlete_team_memberships(team_id, season, provider_player_id);
+
                 CREATE TABLE IF NOT EXISTS gpexe_team_sessions (
                     provider_session_id INTEGER PRIMARY KEY,
                     team_id INTEGER,
@@ -239,6 +256,34 @@ class PASConnectDatabase:
                     error_message TEXT
                 );
 
+                CREATE TABLE IF NOT EXISTS gpexe_session_sync_results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sync_run_id INTEGER NOT NULL,
+                    provider_session_id INTEGER NOT NULL,
+                    team_id INTEGER,
+                    status TEXT NOT NULL
+                        CHECK(status IN ('SUCCESS','PARTIAL','FAILED','SKIPPED')),
+                    readiness TEXT NOT NULL
+                        CHECK(readiness IN ('READY','INCOMPLETE')),
+                    athlete_sessions_count INTEGER NOT NULL DEFAULT 0,
+                    tracks_count INTEGER NOT NULL DEFAULT 0,
+                    kpis_count INTEGER NOT NULL DEFAULT 0,
+                    operation_name TEXT,
+                    variables_json TEXT,
+                    diagnostics_json TEXT,
+                    error_message TEXT,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    UNIQUE(sync_run_id, provider_session_id),
+                    FOREIGN KEY(sync_run_id) REFERENCES gpexe_sync_runs(id) ON DELETE CASCADE
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_sync_results_session
+                ON gpexe_session_sync_results(provider_session_id, completed_at);
+
+                CREATE INDEX IF NOT EXISTS idx_sync_results_run
+                ON gpexe_session_sync_results(sync_run_id, status);
+
                 CREATE TABLE IF NOT EXISTS gpexe_athlete_session_kpis (
                     provider_athlete_session_id INTEGER NOT NULL,
                     source TEXT NOT NULL,
@@ -339,7 +384,9 @@ class PASConnectDatabase:
                 "is_active": "INTEGER", "has_tracks": "INTEGER",
             }.items():
                 if name not in athlete_columns:
-                    connection.execute(f"ALTER TABLE gpexe_athletes ADD COLUMN {name} {definition}")
+                    connection.execute(
+                        f"ALTER TABLE gpexe_athletes ADD COLUMN {name} {definition}"
+                    )
             track_columns = {row[1] for row in connection.execute("PRAGMA table_info(gpexe_tracks)")}
             for name, definition in {"athlete_id": "INTEGER", "has_cardio": "INTEGER"}.items():
                 if name not in track_columns:
@@ -372,6 +419,79 @@ class PASConnectDatabase:
                 connection.execute(
                     "ALTER TABLE gpexe_sync_runs ADD COLUMN failed_count INTEGER NOT NULL DEFAULT 0"
                 )
+            for name, definition in {
+                "provider": "TEXT", "team_id": "INTEGER", "season": "TEXT",
+                "mode": "TEXT", "date_from": "TEXT", "date_to": "TEXT",
+                "requested_count": "INTEGER NOT NULL DEFAULT 0",
+                "success_count": "INTEGER NOT NULL DEFAULT 0",
+                "partial_count": "INTEGER NOT NULL DEFAULT 0",
+                "skipped_count": "INTEGER NOT NULL DEFAULT 0",
+                "retry_of_run_id": "INTEGER", "summary_json": "TEXT",
+            }.items():
+                if name not in columns:
+                    connection.execute(f"ALTER TABLE gpexe_sync_runs ADD COLUMN {name} {definition}")
+
+            connection.execute(
+                """INSERT OR IGNORE INTO gpexe_athlete_team_memberships(
+                provider_player_id, team_id, season, jersey_number, is_active,
+                first_seen_at, last_seen_at, raw_json)
+                SELECT DISTINCT d.provider_player_id, s.team_id, u.season,
+                    a.jersey_number, a.is_active, a.synced_at, a.synced_at, '{}'
+                FROM gpexe_athlete_session_details d
+                JOIN gpexe_team_sessions s ON s.provider_session_id=d.provider_session_id
+                JOIN gpexe_session_sync_results r
+                    ON r.provider_session_id=s.provider_session_id AND r.team_id=s.team_id
+                JOIN gpexe_sync_runs u ON u.id=r.sync_run_id
+                JOIN gpexe_athletes a ON a.provider_player_id=d.provider_player_id
+                WHERE d.provider_player_id IS NOT NULL AND s.team_id IS NOT NULL
+                    AND u.season IS NOT NULL AND TRIM(u.season)<>''"""
+            )
+            connection.execute(
+                """INSERT OR IGNORE INTO gpexe_athlete_team_memberships(
+                provider_player_id, team_id, season, jersey_number, is_active,
+                first_seen_at, last_seen_at, raw_json)
+                SELECT DISTINCT d.provider_player_id, s.team_id,
+                    REPLACE(t.season, '-', '/'), a.jersey_number, a.is_active,
+                    a.synced_at, a.synced_at, '{}'
+                FROM gpexe_athlete_session_details d
+                JOIN gpexe_team_sessions s ON s.provider_session_id=d.provider_session_id
+                JOIN gpexe_teams t ON t.provider_team_id=s.team_id
+                JOIN gpexe_athletes a ON a.provider_player_id=d.provider_player_id
+                WHERE d.provider_player_id IS NOT NULL AND s.team_id IS NOT NULL
+                    AND t.season IS NOT NULL AND TRIM(t.season)<>''"""
+            )
+            connection.execute(
+                """WITH profile_seasons AS (
+                    SELECT CAST(team_id AS INTEGER) AS team_id,
+                        REPLACE(MIN(season), '-', '/') AS season
+                    FROM pas_metric_profiles
+                    WHERE team_id GLOB '[0-9]*' AND season IS NOT NULL AND TRIM(season)<>''
+                    GROUP BY CAST(team_id AS INTEGER)
+                    HAVING COUNT(DISTINCT REPLACE(season, '-', '/'))=1
+                )
+                INSERT OR IGNORE INTO gpexe_athlete_team_memberships(
+                provider_player_id, team_id, season, jersey_number, is_active,
+                first_seen_at, last_seen_at, raw_json)
+                SELECT DISTINCT d.provider_player_id, s.team_id, p.season,
+                    a.jersey_number, a.is_active, a.synced_at, a.synced_at, '{}'
+                FROM gpexe_athlete_session_details d
+                JOIN gpexe_team_sessions s ON s.provider_session_id=d.provider_session_id
+                JOIN profile_seasons p ON p.team_id=s.team_id
+                JOIN gpexe_athletes a ON a.provider_player_id=d.provider_player_id
+                WHERE d.provider_player_id IS NOT NULL AND s.team_id IS NOT NULL"""
+            )
+            connection.execute(
+                """INSERT OR IGNORE INTO gpexe_athlete_team_memberships(
+                provider_player_id, team_id, season, jersey_number, is_active,
+                first_seen_at, last_seen_at, raw_json)
+                SELECT a.provider_player_id, a.team_id, '', a.jersey_number, a.is_active,
+                    a.synced_at, a.synced_at, '{}'
+                FROM gpexe_athletes a
+                WHERE a.team_id IS NOT NULL AND NOT EXISTS (
+                    SELECT 1 FROM gpexe_athlete_team_memberships m
+                    WHERE m.provider_player_id=a.provider_player_id AND m.team_id=a.team_id
+                )"""
+            )
 
             connection.execute(
                 "INSERT INTO pas_connect_meta(key, value) VALUES('schema_version', ?) "
@@ -809,7 +929,9 @@ class PASConnectDatabase:
             self.path, synced_at, len(details), inserted, updated, len(errors), run_id
         )
 
-    def upsert_graphql_athletes(self, athletes: list[Mapping[str, Any]]) -> tuple[int, int]:
+    def upsert_graphql_athletes(
+        self, athletes: list[Mapping[str, Any]], *, season: str | None = None,
+    ) -> tuple[int, int]:
         """UPSERT additivo degli Athletes GraphQL nel database PAS Connect."""
         self.initialize()
         synced_at = datetime.now(timezone.utc).isoformat()
@@ -830,7 +952,7 @@ class PASConnectDatabase:
                     external_player_id=excluded.external_player_id, first_name=excluded.first_name,
                     last_name=excluded.last_name, player_name=excluded.player_name,
                     short_name=excluded.short_name, birth_date=excluded.birth_date,
-                    photo_url=excluded.photo_url, team_id=excluded.team_id,
+                    photo_url=excluded.photo_url,
                     jersey_number=excluded.jersey_number, is_active=excluded.is_active,
                     has_tracks=excluded.has_tracks, synced_at=excluded.synced_at,
                     raw_json=excluded.raw_json""",
@@ -844,6 +966,24 @@ class PASConnectDatabase:
                         synced_at, self._json(row.get("raw") or row),
                     ),
                 )
+                if row.get("team_id") not in (None, ""):
+                    connection.execute(
+                        """INSERT INTO gpexe_athlete_team_memberships(
+                        provider_player_id, team_id, season, jersey_number, is_active,
+                        first_seen_at, last_seen_at, raw_json)
+                        VALUES(?,?,?,?,?,?,?,?)
+                        ON CONFLICT(provider_player_id, team_id, season) DO UPDATE SET
+                        jersey_number=excluded.jersey_number, is_active=excluded.is_active,
+                        last_seen_at=excluded.last_seen_at, raw_json=excluded.raw_json""",
+                        (
+                            athlete_id, int(row["team_id"]), str(season or ""),
+                            str(row.get("jersey_number"))
+                            if row.get("jersey_number") is not None else None,
+                            int(bool(row.get("is_active")))
+                            if row.get("is_active") is not None else None,
+                            synced_at, synced_at, self._json(row.get("raw") or row),
+                        ),
+                    )
                 inserted += int(not exists)
                 updated += int(exists)
             connection.commit()
@@ -1267,6 +1407,291 @@ class PASConnectDatabase:
                 connection.rollback()
                 raise
         return inserted, updated, tracks_count, kpis_count
+
+    def create_sync_run(self, context: Mapping[str, Any]) -> int:
+        """Apre un tentativo GraphQL senza modificare i dati prestazionali."""
+        self.initialize()
+        started_at = str(context.get("started_at") or datetime.now(timezone.utc).isoformat())
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO gpexe_sync_runs(
+                resource_group, started_at, status, provider, team_id, season, mode,
+                date_from, date_to, requested_count, retry_of_run_id
+                ) VALUES('graphql_session_sync', ?, 'running', 'gpexe', ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    started_at, context.get("team_id"), context.get("season"),
+                    context.get("mode"), context.get("date_from"), context.get("date_to"),
+                    int(context.get("requested_count") or 0), context.get("retry_of_run_id"),
+                ),
+            )
+            connection.commit()
+            return int(cursor.lastrowid)
+
+    def record_session_sync_result(self, result: Mapping[str, Any]) -> int:
+        """Registra solo diagnostica redatta e risultato terminale di una sessione."""
+        self.initialize()
+        status = str(result["status"]).upper()
+        readiness = str(result["readiness"]).upper()
+        if status not in {"SUCCESS", "PARTIAL", "FAILED", "SKIPPED"}:
+            raise ValueError(f"Stato sync non valido: {status}")
+        if readiness not in {"READY", "INCOMPLETE"}:
+            raise ValueError(f"Readiness sync non valida: {readiness}")
+        with self.connect() as connection:
+            cursor = connection.execute(
+                """INSERT INTO gpexe_session_sync_results(
+                sync_run_id, provider_session_id, team_id, status, readiness,
+                athlete_sessions_count, tracks_count, kpis_count, operation_name,
+                variables_json, diagnostics_json, error_message, started_at, completed_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(sync_run_id, provider_session_id) DO UPDATE SET
+                status=excluded.status, readiness=excluded.readiness,
+                athlete_sessions_count=excluded.athlete_sessions_count,
+                tracks_count=excluded.tracks_count, kpis_count=excluded.kpis_count,
+                operation_name=excluded.operation_name, variables_json=excluded.variables_json,
+                diagnostics_json=excluded.diagnostics_json, error_message=excluded.error_message,
+                completed_at=excluded.completed_at""",
+                (
+                    int(result["sync_run_id"]), int(result["provider_session_id"]),
+                    result.get("team_id"), status, readiness,
+                    int(result.get("athlete_sessions_count") or 0),
+                    int(result.get("tracks_count") or 0), int(result.get("kpis_count") or 0),
+                    result.get("operation_name"), json.dumps(result.get("variables") or {}, sort_keys=True),
+                    json.dumps(result.get("diagnostics") or [], sort_keys=True),
+                    result.get("error_message"),
+                    str(result.get("started_at") or datetime.now(timezone.utc).isoformat()),
+                    str(result.get("completed_at") or datetime.now(timezone.utc).isoformat()),
+                ),
+            )
+            connection.commit()
+            return int(cursor.lastrowid or 0)
+
+    def complete_sync_run(self, run_id: int, summary: Mapping[str, Any]) -> None:
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute(
+                """UPDATE gpexe_sync_runs SET completed_at=?, status=?,
+                success_count=?, partial_count=?, failed_count=?, skipped_count=?, summary_json=?
+                WHERE id=?""",
+                (
+                    datetime.now(timezone.utc).isoformat(), str(summary.get("status") or "failed"),
+                    int(summary.get("success_count") or 0), int(summary.get("partial_count") or 0),
+                    int(summary.get("failed_count") or 0), int(summary.get("skipped_count") or 0),
+                    json.dumps(dict(summary), ensure_ascii=False, sort_keys=True, default=str), int(run_id),
+                ),
+            )
+            connection.commit()
+
+    def list_session_sync_results(
+        self, *, run_id: int | None = None, team_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        if not self.path.is_file():
+            return []
+        clauses: list[str] = []
+        values: list[Any] = []
+        if run_id is not None:
+            clauses.append("r.sync_run_id=?")
+            values.append(int(run_id))
+        if team_id is not None:
+            clauses.append("r.team_id=?")
+            values.append(int(team_id))
+        where = " WHERE " + " AND ".join(clauses) if clauses else ""
+        with self.connect() as connection:
+            if connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='gpexe_session_sync_results'"
+            ).fetchone() is None:
+                return []
+            rows = connection.execute(
+                "SELECT r.* FROM gpexe_session_sync_results r" + where
+                + " ORDER BY r.id DESC", values,
+            ).fetchall()
+            return [dict(row) for row in rows]
+
+    def retryable_session_ids(self, run_id: int) -> list[int]:
+        return [
+            int(row["provider_session_id"])
+            for row in self.list_session_sync_results(run_id=run_id)
+            if row["status"] in {"FAILED", "PARTIAL"}
+        ]
+
+    def latest_ready_session_ids(self, *, team_id: int | None = None) -> list[int]:
+        """Restituisce sessioni con almeno un bundle READY, anche dopo un refresh fallito."""
+        if not self.path.is_file():
+            return []
+        params: list[Any] = []
+        team_clause = ""
+        if team_id is not None:
+            team_clause = " AND team_id=?"
+            params.append(int(team_id))
+        with self.connect() as connection:
+            if connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='gpexe_session_sync_results'"
+            ).fetchone() is None:
+                return []
+            rows = connection.execute(
+                """SELECT DISTINCT provider_session_id FROM gpexe_session_sync_results
+                WHERE readiness='READY' AND status IN ('SUCCESS','SKIPPED')""" + team_clause,
+                params,
+            ).fetchall()
+            return [int(row[0]) for row in rows]
+
+    def upsert_graphql_team_session_bundle(
+        self, team_session: Mapping[str, Any], athletes: list[Mapping[str, Any]],
+        sessions: list[Mapping[str, Any]], *, replace_kpis: bool = True,
+        season: str | None = None,
+    ) -> tuple[int, int, int]:
+        """Pubblica un bundle TeamSession completo in una sola transazione.
+
+        KPI precedenti vengono sostituiti soltanto se l'intero bundle arriva al
+        commit. Un bundle strutturale incompleto non sostituisce mai KPI già
+        validi. Qualunque errore lascia quindi operativo l'ultimo bundle valido.
+        """
+        self.initialize()
+        synced_at = datetime.now(timezone.utc).isoformat()
+        provider_session_id = int(team_session["provider_session_id"])
+        with self.connect() as connection:
+            try:
+                connection.execute("BEGIN")
+                if not replace_kpis:
+                    existing_kpis = connection.execute(
+                        """SELECT COUNT(*) FROM gpexe_athlete_session_kpis k
+                        JOIN gpexe_athlete_session_details d
+                          ON d.provider_athlete_session_id=k.provider_athlete_session_id
+                        WHERE d.provider_session_id=?""",
+                        (provider_session_id,),
+                    ).fetchone()[0]
+                    if int(existing_kpis):
+                        connection.rollback()
+                        return 0, 0, 0
+                connection.execute(
+                    """INSERT INTO gpexe_team_sessions(
+                    provider_session_id, team_id, category_id, session_name, notes,
+                    start_timestamp, end_timestamp, total_time, is_stats_valid,
+                    drill_enabled, state, submitted_by, provider_created_at,
+                    provider_updated_at, synced_at, raw_json
+                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(provider_session_id) DO UPDATE SET
+                    team_id=excluded.team_id, category_id=excluded.category_id,
+                    session_name=excluded.session_name, notes=excluded.notes,
+                    start_timestamp=excluded.start_timestamp, end_timestamp=excluded.end_timestamp,
+                    total_time=excluded.total_time, is_stats_valid=excluded.is_stats_valid,
+                    drill_enabled=excluded.drill_enabled, state=excluded.state,
+                    submitted_by=excluded.submitted_by, provider_created_at=excluded.provider_created_at,
+                    provider_updated_at=excluded.provider_updated_at, synced_at=excluded.synced_at,
+                    raw_json=excluded.raw_json""",
+                    (
+                        provider_session_id, team_session.get("team_id"), team_session.get("category_id"),
+                        team_session["session_name"], team_session.get("notes"),
+                        team_session.get("start_timestamp"), team_session.get("end_timestamp"),
+                        team_session.get("total_time"), int(bool(team_session.get("is_stats_valid"))),
+                        int(bool(team_session.get("drill_enabled"))), team_session.get("state"),
+                        team_session.get("submitted_by"), team_session.get("created_at"),
+                        team_session.get("updated_at"), synced_at, self._json(team_session),
+                    ),
+                )
+                for athlete in athletes:
+                    connection.execute(
+                        """INSERT INTO gpexe_athletes(
+                        provider_player_id, external_player_id, first_name, last_name, player_name,
+                        short_name, birth_date, photo_url, team_id, jersey_number, is_active,
+                        has_tracks, synced_at, raw_json
+                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        ON CONFLICT(provider_player_id) DO UPDATE SET
+                        external_player_id=excluded.external_player_id, first_name=excluded.first_name,
+                        last_name=excluded.last_name, player_name=excluded.player_name,
+                        short_name=excluded.short_name, birth_date=excluded.birth_date,
+                            photo_url=excluded.photo_url,
+                            jersey_number=excluded.jersey_number, is_active=excluded.is_active,
+                        has_tracks=excluded.has_tracks, synced_at=excluded.synced_at,
+                        raw_json=excluded.raw_json""",
+                        (
+                            int(athlete["provider_player_id"]), athlete.get("external_player_id"),
+                            athlete.get("first_name"), athlete.get("last_name"), athlete["player_name"],
+                            athlete.get("short_name"), athlete.get("birth_date"), athlete.get("photo_url"),
+                            athlete.get("team_id"), athlete.get("jersey_number"),
+                            int(bool(athlete.get("is_active"))) if athlete.get("is_active") is not None else None,
+                            int(bool(athlete.get("has_tracks"))) if athlete.get("has_tracks") is not None else None,
+                            synced_at, self._json(athlete.get("raw") or athlete),
+                        ),
+                    )
+                    if team_session.get("team_id") not in (None, ""):
+                        connection.execute(
+                            """INSERT INTO gpexe_athlete_team_memberships(
+                            provider_player_id, team_id, season, jersey_number, is_active,
+                            first_seen_at, last_seen_at, raw_json)
+                            VALUES(?,?,?,?,?,?,?,?)
+                            ON CONFLICT(provider_player_id, team_id, season) DO UPDATE SET
+                            jersey_number=excluded.jersey_number, is_active=excluded.is_active,
+                            last_seen_at=excluded.last_seen_at, raw_json=excluded.raw_json""",
+                            (
+                                int(athlete["provider_player_id"]), int(team_session["team_id"]),
+                                str(season or ""),
+                                str(athlete.get("jersey_number"))
+                                if athlete.get("jersey_number") is not None else None,
+                                int(bool(athlete.get("is_active")))
+                                if athlete.get("is_active") is not None else None,
+                                synced_at, synced_at, self._json(athlete.get("raw") or athlete),
+                            ),
+                        )
+                tracks_count = kpis_count = 0
+                for row in sessions:
+                    session_id = int(row["provider_athlete_session_id"])
+                    connection.execute(
+                        """INSERT INTO gpexe_athlete_session_details(
+                        provider_athlete_session_id, provider_session_id, provider_player_id,
+                        drill_id, track_id, state, starter, is_stats_valid, metrics_json,
+                        zones_json, synced_at, raw_json, master_athlete_session,
+                        total_time_json, template_id
+                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        ON CONFLICT(provider_athlete_session_id) DO UPDATE SET
+                        provider_session_id=excluded.provider_session_id,
+                        provider_player_id=excluded.provider_player_id, drill_id=excluded.drill_id,
+                        track_id=excluded.track_id, state=excluded.state, starter=excluded.starter,
+                        is_stats_valid=excluded.is_stats_valid, synced_at=excluded.synced_at,
+                        raw_json=excluded.raw_json, master_athlete_session=excluded.master_athlete_session,
+                        total_time_json=excluded.total_time_json, template_id=excluded.template_id""",
+                        (
+                            session_id, provider_session_id, row.get("provider_player_id"), row.get("drill_id"),
+                            row.get("track_id"), row.get("state"),
+                            int(bool(row.get("starter"))) if row.get("starter") is not None else None,
+                            int(bool(row.get("is_stats_valid"))) if row.get("is_stats_valid") is not None else None,
+                            "{}", "{}", synced_at, self._json(row.get("raw") or row),
+                            str(row.get("master_athlete_session")) if row.get("master_athlete_session") is not None else None,
+                            json.dumps(row.get("total_time") or {}, default=str), row.get("template_id"),
+                        ),
+                    )
+                    track = row.get("track") if isinstance(row.get("track"), Mapping) else {}
+                    if track.get("id") not in (None, ""):
+                        track_athlete = track.get("athlete") if isinstance(track.get("athlete"), Mapping) else {}
+                        connection.execute(
+                            """INSERT INTO gpexe_tracks(provider_track_id, athlete_id, has_cardio, synced_at, raw_json)
+                            VALUES(?,?,?,?,?) ON CONFLICT(provider_track_id) DO UPDATE SET
+                            athlete_id=excluded.athlete_id, has_cardio=excluded.has_cardio,
+                            synced_at=excluded.synced_at, raw_json=excluded.raw_json""",
+                            (str(track["id"]), track_athlete.get("id"),
+                             int(bool(track.get("hasCardio"))) if track.get("hasCardio") is not None else None,
+                             synced_at, self._json(track)),
+                        )
+                        tracks_count += 1
+                    if replace_kpis:
+                        connection.execute(
+                            "DELETE FROM gpexe_athlete_session_kpis WHERE provider_athlete_session_id=?", (session_id,),
+                        )
+                        for source, key in (("identifierKpi", "identifier_kpi"), ("kpi", "kpi")):
+                            for position, kpi in enumerate(row.get(key) or []):
+                                connection.execute(
+                                    """INSERT INTO gpexe_athlete_session_kpis(
+                                    provider_athlete_session_id, source, position, name, value,
+                                    kpi_group, uom, unit, raw_json) VALUES(?,?,?,?,?,?,?,?,?)""",
+                                    (session_id, source, position, str(kpi.get("name") or ""),
+                                     str(kpi.get("value")) if kpi.get("value") is not None else None,
+                                     kpi.get("group"), kpi.get("uom"), kpi.get("unit"), self._json(kpi)),
+                                )
+                                kpis_count += 1
+                connection.commit()
+                return len(sessions), tracks_count, kpis_count
+            except Exception:
+                connection.rollback()
+                raise
 
     def athlete_session_detail_count(self) -> int:
         if not self.path.is_file():

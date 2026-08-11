@@ -1,5 +1,18 @@
 # Changelog
 
+## PAS v4.13.0 - 2026-08-11
+
+- Sostituito il percorso Full Sync operativo con orchestrazione GraphQL contestualizzata; il vecchio flusso REST non viene riattivato.
+- Aggiunto tracing redatto C-01…C-05 per TeamSessionAthletesession, senza credenziali o header sensibili.
+- Introdotte le migrazioni additive PAS Connect 10→11→12: risultati per TeamSession, stati terminali, readiness, contesto run, audit retry e relazione contestuale atleta–Team–stagione.
+- Implementato UPSERT atomico per bundle TeamSession, rollback e protezione dell'ultimo dato READY, con import ripetuto idempotente/SKIPPED.
+- Aggiunti retry singolo e retry degli errori e diagnostica Sync read-only.
+- Reso il contesto GPExe locale Team/stagione/data/sessione indipendente da Excel; rimosso il filtro roster Hellas dal percorso GPExe.
+- Mantenuta `gpexe_athletes` come anagrafica provider e spostata l'appartenenza contestuale nella relazione atleta–Team–stagione, preservando il Team legacy e gli atleti condivisi tra contesti.
+- Validata live TeamSession 143261 del Team 543, stagione 2026/2027, data 31/07/2026: i resolver GPExe `identifierKpi` e `kpi` falliscono lato provider con ID vuoto per tutte le 27 AthleteSession.
+- Aggiunto il fallback controllato che, soltanto quando gli errori sono confinati ai resolver KPI, pubblica 27 AthleteSession e 27 Track con stato `PARTIAL`, readiness `INCOMPLETE`, KPI zero e diagnostica `provider KPI error`, senza inventare KPI e senza fallback Excel.
+- Aggiunti test v4.13.0 per orchestrazione, variabili/tracing, schema, rollback, idempotenza, retry, multi-Team e contratti UI.
+
 ## PAS v4.12.0 - 2026-08-04
 
 - Resa provider-aware la Panoramica del giorno per Duration, Distance, Acc Events, Dec Events, Max Speed, Speed Events e metriche a soglia dotate di profilo verificato.

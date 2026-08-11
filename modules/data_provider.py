@@ -290,7 +290,6 @@ class GPExeProvider(PASDataProvider):
         source_name: str | None = None,
         filter_configured_roster: bool = True,
     ) -> pd.DataFrame:
-        from modules.config import PLAYERS_HELLAS
         from modules.gpexe_import import import_gpexe_file
 
         api_session_ids = None
@@ -314,10 +313,9 @@ class GPExeProvider(PASDataProvider):
             frame["Role Clean"] = frame["Role"].map(
                 lambda value: role_mapping.get(str(value).strip().lower(), str(value).strip().title())
             )
-            if filter_configured_roster:
-                filtered = frame[frame["Athlete"].isin(PLAYERS_HELLAS)].copy()
-                if not filtered.empty:
-                    frame = filtered
+            # Il database PAS Connect è già delimitato da TeamSession/provider ID.
+            # Il roster configurato appartiene esclusivamente al contesto Excel
+            # e non può filtrare un Team GPExe diverso.
             return frame.reset_index(drop=True)
 
         role_mapping = {
@@ -334,8 +332,6 @@ class GPExeProvider(PASDataProvider):
         frame["Role Clean"] = frame["Role"].map(
             lambda value: role_mapping.get(str(value).strip().lower(), str(value).strip().title())
         )
-        if filter_configured_roster:
-            frame = frame[frame["Athlete"].isin(PLAYERS_HELLAS)].copy()
         frame.attrs.update(result.data.attrs)
         frame.attrs["gpexe_rows_read"] = result.rows_read
         frame.attrs["gpexe_rows_rejected"] = result.rows_rejected
