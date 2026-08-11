@@ -1,5 +1,14 @@
 # Changelog
 
+## PAS v4.14.0 - 2026-08-11
+
+- Semplificata la pagina Strumenti → PAS Connect con una vista principale dedicata al flusso quotidiano: sorgente, connessione, Team/stagione/date/TeamSession, Full Sync e riepilogo sintetico dell'ultimo risultato.
+- Raccolte le funzioni meno frequenti negli expander chiusi `Opzioni GPExe` e `Avanzate / Diagnostica`, preservando chiavi e comportamento dei widget esistenti.
+- Reso l'uploader visibile soltanto in modalità `File export`; rimossi dalla vista principale gli import manuali già coperti dall'orchestratore GraphQL.
+- Raccolti i quattro flussi REST storici in `Legacy — sola lettura`, mantenendoli disabilitati senza riattivarne il comportamento.
+- Nessuna modifica a schema o dati PAS Connect, query e sync GPExe, fallback KPI, database Excel, Dashboard, calcoli, report, Drills o Planner.
+- Aggiunti test di contratto UI per layout, visibilità condizionale, riepilogo sync, diagnostica embedded e isolamento dei controlli legacy.
+
 ## PAS v4.13.0 - 2026-08-11
 
 - Sostituito il percorso Full Sync operativo con orchestrazione GraphQL contestualizzata; il vecchio flusso REST non viene riattivato.

@@ -453,20 +453,17 @@ def test_context_change_invalidates_athletes_and_athlete_sessions_but_not_team()
     assert state == {"pas_gpexe_teams": [{"id": "469"}], "pas_gpexe_selected_team_index": 0}
 
 
-def test_ui_import_is_guarded_and_persists_success_or_error_message():
+def test_manual_query_remains_diagnostic_without_manual_persistence():
     from pathlib import Path
     app = Path("app.py").read_text(encoding="utf-8")
-    import_position = app.index('if st.button("Importa Athlete Sessions e KPI nel database PAS"')
-    block = app[import_position:import_position + 5000]
-    assert "try:" in block and "except Exception as exc:" in block
-    assert 'st.session_state["pas_gpexe_last_athlete_session_import"]' in block
-    assert "st.error(" in block
-    assert "Tracks in UPSERT" in block and "KPI sostituiti" in block
+    assert '"Recupera Athlete Sessions"' in app
+    assert '"Importa Athlete Sessions e KPI nel database PAS"' not in app
+    assert "run_full_sync(" in app
 
 
 def test_v440_does_not_connect_new_data_to_dashboard_or_reports():
     from pathlib import Path
     app = Path("app.py").read_text(encoding="utf-8")
-    assert "upsert_graphql_athlete_sessions" in app
+    assert "run_full_sync(" in app
     assert "Dashboard" not in ATHLETES_QUERY
     assert "report" not in TEAM_SESSION_ATHLETESESSION_QUERY.lower()

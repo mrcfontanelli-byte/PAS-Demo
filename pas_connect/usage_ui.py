@@ -20,7 +20,9 @@ PREVIEW_COLUMNS = [
 ]
 
 
-def render_metric_usage_section(database: PASConnectDatabase, code_root: Path) -> None:
+def render_metric_usage_section(
+    database: PASConnectDatabase, code_root: Path, *, embedded: bool = False
+) -> None:
     st.markdown("##### Utilizzo metriche PAS")
     st.caption(
         "Il registry descrive dove una metrica è usata. È indipendente dal provider e "
@@ -48,7 +50,14 @@ def render_metric_usage_section(database: PASConnectDatabase, code_root: Path) -
         "AMBIGUOUS = da validare · MANUAL = creato o confermato manualmente."
     )
 
-    with st.expander("Preview censimento automatico (sola lettura)", expanded=not rows):
+    preview_panel = (
+        st.container(border=True)
+        if embedded
+        else st.expander("Preview censimento automatico (sola lettura)", expanded=not rows)
+    )
+    with preview_panel:
+        if embedded:
+            st.markdown("###### Preview censimento automatico (sola lettura)")
         if st.button("Analizza codice e metadati", key="pas_metric_usage_scan"):
             st.session_state["pas_metric_usage_preview"] = scan_metric_usage(code_root, catalog)
         proposals = st.session_state.get("pas_metric_usage_preview", [])

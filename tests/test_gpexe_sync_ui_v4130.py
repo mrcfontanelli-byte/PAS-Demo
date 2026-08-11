@@ -7,7 +7,7 @@ ROOT = Path(__file__).parents[1]
 def test_sync_manager_is_graphql_contextual_and_read_only_diagnostics_are_wired():
     app = (ROOT / "app.py").read_text(encoding="utf-8")
     assert "SyncRequest(" in app
-    assert "Diagnostica Sync (sola lettura)" in app
+    assert "Tracing C-01→C-05" in app
     assert "Riprova sessione" in app
     assert "Riprova tutti gli errori" in app
     assert "disabled=not bool(selected_team)" in app

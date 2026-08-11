@@ -155,7 +155,8 @@ def test_supported_modules_types_and_pas_connect_ui_are_complete():
     assert set(USAGE_STATUSES) == {"VERIFIED", "PROBABLE", "AMBIGUOUS", "MANUAL"}
     app = open("app.py", encoding="utf-8").read()
     ui = open("pas_connect/usage_ui.py", encoding="utf-8").read()
-    assert "render_metric_usage_section(PASConnectDatabase.default(base_dir), base_dir)" in app
+    assert "render_metric_usage_section(" in app
+    assert "pas_connect_database, base_dir, embedded=True" in app
     assert "Utilizzo metriche PAS" in ui
     assert "Conferma e salva associazioni proposte" in ui
     assert "Metriche senza utilizzo registrato" in ui

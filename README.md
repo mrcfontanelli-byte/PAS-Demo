@@ -1,3 +1,9 @@
+## PAS v4.14.0 — Semplificazione PAS Connect UI/UX
+
+La pagina **Strumenti → PAS Connect** separa ora l'uso quotidiano dalle funzioni tecniche. La vista principale mantiene sorgente dati, stato e comandi di connessione GPExe, contesto Team/stagione/date/TeamSession, sincronizzazione completa e riepilogo sintetico dell'ultimo sync. Le configurazioni e i recuperi operativi meno frequenti sono raccolti in **Opzioni GPExe**; cataloghi, Developer Tools, tracing e dettagli GraphQL in **Avanzate / Diagnostica**; i quattro flussi REST storici restano disabilitati e raccolti in **Legacy — sola lettura**.
+
+L'uploader è visibile soltanto in modalità **File export** e i due import manuali coperti dall'orchestratore non compaiono più nella vista principale. La riorganizzazione è esclusivamente presentazionale: non cambia schema PAS Connect, query o sincronizzazione GPExe, fallback KPI, Excel, calcoli, Dashboard, report, Drills o Planner. Tutte le funzioni ancora supportate restano raggiungibili e le chiavi di sessione Streamlit esistenti sono preservate.
+
 ## PAS v4.13.0 — GPExe Sync Reliability & Multi-Team Foundation
 
 PAS Connect dispone ora di un orchestratore esclusivamente GraphQL per la catena TeamSession → AthleteSession → Track → KPI. Ogni TeamSession viene validata, tracciata nei checkpoint redatti C-01…C-05 e pubblicata con una singola transazione; un refresh incompleto o fallito non sostituisce l'ultimo bundle READY. Import ripetuti senza `force refresh` sono `SKIPPED`, mentre retry singolo e retry degli errori operano solo sulle sessioni richieste.

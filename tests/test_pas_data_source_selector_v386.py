@@ -32,13 +32,13 @@ def test_partial_gpexe_data_falls_back_to_excel_without_blocking_the_ui():
     assert fallback < excel_load < blocking_error
 
 
-def test_gpexe_import_does_not_change_analytic_source_or_navigation():
+def test_full_sync_does_not_change_analytic_source_or_navigation():
     app = (Path(__file__).parents[1] / "app.py").read_text(encoding="utf-8")
-    start = app.index('if st.button("Importa Athlete Sessions e KPI nel database PAS"')
-    block = app[start:app.index("st.divider()", start)]
+    start = app.index('if st.button(\n                    "🚀 Sincronizzazione completa GPExe"')
+    block = app[start:app.index("sync_database =", start)]
     assert 'pas_data_source' not in block
     assert 'pas_navigation' not in block
-    assert 'st.rerun()' not in block
+    assert '"Importa Athlete Sessions e KPI nel database PAS"' not in app
 
 
 def test_unexpected_synchronized_api_failure_is_confined_to_excel_fallback():

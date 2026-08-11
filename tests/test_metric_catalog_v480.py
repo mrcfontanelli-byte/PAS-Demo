@@ -213,7 +213,8 @@ def test_catalog_ui_is_isolated_in_pas_connect_and_has_no_absolute_csv_path():
     app = (root / "app.py").read_text(encoding="utf-8")
     ui = (root / "pas_connect" / "catalog_ui.py").read_text(encoding="utf-8")
     parser = (root / "pas_connect" / "metric_catalog.py").read_text(encoding="utf-8")
-    assert "render_metric_catalog_section(PASConnectDatabase.default(base_dir))" in app
+    assert "render_metric_catalog_section(" in app
+    assert "pas_connect_database, embedded=True" in app
     assert "Catalogo metriche PAS" in ui
     assert "Salva preview nel catalogo" in ui
     assert "C:\\Users\\" not in parser

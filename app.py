@@ -3026,974 +3026,1051 @@ with settings_column:
 
         st.divider()
         st.markdown("#### PAS Connect")
-        provider_ids = tuple(item.provider_id for item in provider_catalog)
-        provider_labels = {item.provider_id: item.display_name for item in provider_catalog}
-        selected_provider_id = st.selectbox(
-            "Sorgente dati",
-            options=provider_ids,
-            index=provider_ids.index(provider_selection.requested.provider_id),
-            format_func=provider_labels.get,
-            key="pas_data_source",
-            help=(
-                "Excel resta la sorgente predefinita. GPExe può usare sessioni già sincronizzate localmente oppure un export."
-            ),
-        )
-        current_selection = resolve_data_provider(selected_provider_id)
-        if current_selection.fallback_applied:
-            st.warning(current_selection.requested.status_message)
-        else:
-            st.caption(current_selection.effective.status_message)
-
-        if selected_provider_id == "gpexe":
-            st.radio(
-                "Origine GPExe",
-                options=("API sincronizzata", "File export"),
-                horizontal=True,
-                key="pas_gpexe_input_mode",
-                help="La modalità API usa esclusivamente dati già presenti nel database PAS Connect locale.",
-            )
-            api_database_path = PASConnectDatabase.default(base_dir).path
-            api_contexts = available_contexts(api_database_path)
-            selected_local_team = None
-            selected_local_season = None
-            if api_contexts:
-                context_labels = [f"Team {item['team_id']} · {item['season']}" for item in api_contexts]
-                context_index = st.selectbox(
-                    "Contesto GPExe locale", range(len(api_contexts)),
-                    format_func=lambda index: context_labels[index], key="pas_gpexe_local_context_index",
-                )
-                selected_local_team = int(api_contexts[context_index]["team_id"])
-                selected_local_season = str(api_contexts[context_index]["season"])
-                st.session_state["pas_gpexe_context_athletes"] = available_athletes(
-                    api_database_path,
-                    team_id=selected_local_team,
-                    season=selected_local_season,
-                )
-            api_sessions = available_sessions(
-                api_database_path, team_id=selected_local_team,
-                season=selected_local_season, ready_only=bool(api_contexts),
-            )
-            if st.session_state.get("pas_gpexe_input_mode") == "API sincronizzata":
-                if api_sessions:
-                    session_by_id = {int(item["provider_session_id"]): item for item in api_sessions}
-                    session_options = tuple(session_by_id)
-                    defaults = [sid for sid in st.session_state.get("pas_gpexe_active_session_ids", []) if sid in session_by_id]
-                    selected_ids = st.multiselect(
-                        "TeamSession locali attive nel PAS",
-                        options=session_options,
-                        default=defaults,
-                        format_func=lambda sid: (
-                            f"{str(session_by_id[sid].get('start_timestamp') or '')[:10]} · "
-                            f"{session_by_id[sid].get('session_name') or sid}"
-                        ),
-                        key="pas_gpexe_active_session_ids",
-                        help="Senza selezione vengono utilizzate tutte le TeamSession già memorizzate localmente.",
-                    )
-                    st.success(
-                        f"Dati GPExe READY disponibili: {len(api_sessions)} TeamSession · "
-                        f"{len(selected_ids) or len(api_sessions)} selezionate."
-                    )
-                else:
-                    st.info("Nessuna TeamSession GPExe presente nel database PAS Connect locale.")
-            gpexe_export = st.file_uploader(
-                "Carica export GPExe",
-                type=["csv", "xlsx", "xls", "json"],
-                help=(
-                    "Carica un export completo GPExe. Il file viene validato e "
-                    "utilizzato in memoria; il database Excel incluso non viene modificato."
-                ),
-                key="pas_gpexe_export_upload",
-            )
-            if gpexe_export is None and st.session_state.get("pas_gpexe_input_mode") == "File export":
-                st.info("Nessun export GPExe caricato: il PAS continua a utilizzare Excel.")
-            elif gpexe_export is not None and using_gpexe and database_source_label == "Export GPExe caricato":
-                st.success(
-                    f"Export GPExe attivo: {gpexe_export.name} · "
-                    f"{database_info['rows']} righe importate."
-                )
-
-        render_metric_catalog_section(PASConnectDatabase.default(base_dir))
-        render_metric_usage_section(PASConnectDatabase.default(base_dir), base_dir)
-        render_developer_tools(
-            selected_provider=requested_provider_id,
-            active_frame=raw,
-            excel_source=database_excel_source,
-            database_path=PASConnectDatabase.default(base_dir).path,
-        )
-
-        st.markdown("##### Connessione GPExe")
         st.caption(
-            "La connessione verifica esclusivamente l'autenticazione GraphQL. "
-            "Excel resta la sorgente predefinita e non viene modificato."
+            "Excel resta invariato. GPExe usa esclusivamente PAS Connect locale "
+            "o un export selezionato esplicitamente."
         )
-
+        pas_connect_database = PASConnectDatabase.default(base_dir)
         is_gpexe_connected = bool(st.session_state.get("pas_gpexe_connected", False))
-        if is_gpexe_connected:
-            connected_team_count = st.session_state.get("pas_gpexe_team_count")
-            connected_base_url = st.session_state.get("pas_gpexe_connected_base_url", "")
-            status_message = "Connesso a GPExe"
-            if connected_team_count is not None:
-                status_message += f" · Team rilevati: {connected_team_count}"
-            if connected_base_url:
-                status_message += f" · {connected_base_url}"
-            st.success(status_message)
-        else:
-            st.info("Stato connessione: non connesso")
-
+        show_gpexe_options = is_gpexe_connected or (
+            requested_provider_id == "gpexe"
+            and st.session_state.get("pas_gpexe_input_mode") == "File export"
+        )
         try:
-            gpexe_secrets = dict(st.secrets.get("gpexe", {}))
+            legacy_reference_counts = pas_connect_database.counts()
+            legacy_counts = {
+                **legacy_reference_counts,
+                "team_sessions": pas_connect_database.team_session_count(),
+                "team_session_details": pas_connect_database.team_session_detail_count(),
+                "athlete_session_details": pas_connect_database.athlete_session_detail_count(),
+            }
         except Exception:
-            gpexe_secrets = {}
+            legacy_counts = {}
+        show_legacy = is_gpexe_connected or any(legacy_counts.values())
+        pas_connect_main = st.container()
+        pas_connect_options = (
+            st.expander("Opzioni GPExe", expanded=False)
+            if show_gpexe_options
+            else None
+        )
+        pas_connect_advanced = st.expander("Avanzate / Diagnostica", expanded=False)
+        pas_connect_legacy = (
+            st.expander("Legacy — sola lettura", expanded=False)
+            if show_legacy
+            else None
+        )
+        if pas_connect_legacy is not None and not is_gpexe_connected:
+            with pas_connect_legacy:
+                st.caption("Dati legacy presenti nel database PAS Connect locale.")
+                st.json(legacy_counts)
+        with pas_connect_main:
+            provider_ids = tuple(item.provider_id for item in provider_catalog)
+            provider_labels = {item.provider_id: item.display_name for item in provider_catalog}
+            selected_provider_id = st.selectbox(
+                "Sorgente dati",
+                options=provider_ids,
+                index=provider_ids.index(provider_selection.requested.provider_id),
+                format_func=provider_labels.get,
+                key="pas_data_source",
+                help=(
+                    "Excel resta la sorgente predefinita. GPExe può usare sessioni già sincronizzate localmente oppure un export."
+                ),
+            )
+            current_selection = resolve_data_provider(selected_provider_id)
+            if current_selection.fallback_applied:
+                st.warning(current_selection.requested.status_message)
+            else:
+                st.caption(current_selection.effective.status_message)
 
-        gpexe_base_url = st.text_input(
-            "API base URL",
-            value=str(gpexe_secrets.get("base_url", "https://e15.gpexe.com/ui/v2/")),
-            key="pas_gpexe_base_url",
-            help="Endpoint GraphQL verificato dell’istanza GPExe: https://e15.gpexe.com/ui/v2/",
-        )
-        gpexe_username = st.text_input(
-            "Email GPExe",
-            value=str(gpexe_secrets.get("username", "")),
-            key="pas_gpexe_username",
-        )
-        gpexe_password = st.text_input(
-            "Password",
-            value=str(gpexe_secrets.get("password", "")),
-            type="password",
-            key="pas_gpexe_password",
-        )
-
-        if st.button(
-            "Connetti a GPExe",
-            key="pas_gpexe_connect",
-            use_container_width=True,
-        ):
-            try:
-                config = GPExeConfig(
-                    base_url=gpexe_base_url.strip(),
-                    username=gpexe_username.strip(),
-                    password=gpexe_password,
-                    timeout_seconds=20.0,
-                    verify_tls=True,
+            if selected_provider_id == "gpexe":
+                st.radio(
+                    "Origine GPExe",
+                    options=("API sincronizzata", "File export"),
+                    horizontal=True,
+                    key="pas_gpexe_input_mode",
+                    help="La modalità API usa esclusivamente dati già presenti nel database PAS Connect locale.",
                 )
-                config.validate(require_credentials=True)
-                client = GPExeGraphQLClient(config)
-                client.test_connection()
-                runtime_token = client.token
-                team_count = None
+                api_database_path = pas_connect_database.path
+                api_contexts = available_contexts(api_database_path)
+                selected_local_team = None
+                selected_local_season = None
+                if api_contexts:
+                    context_labels = [f"Team {item['team_id']} · {item['season']}" for item in api_contexts]
+                    context_index = st.selectbox(
+                        "Contesto GPExe locale", range(len(api_contexts)),
+                        format_func=lambda index: context_labels[index], key="pas_gpexe_local_context_index",
+                    )
+                    selected_local_team = int(api_contexts[context_index]["team_id"])
+                    selected_local_season = str(api_contexts[context_index]["season"])
+                    st.session_state["pas_gpexe_context_athletes"] = available_athletes(
+                        api_database_path,
+                        team_id=selected_local_team,
+                        season=selected_local_season,
+                    )
+                api_sessions = available_sessions(
+                    api_database_path, team_id=selected_local_team,
+                    season=selected_local_season, ready_only=bool(api_contexts),
+                )
+                if st.session_state.get("pas_gpexe_input_mode") == "API sincronizzata":
+                    if api_sessions:
+                        session_by_id = {int(item["provider_session_id"]): item for item in api_sessions}
+                        session_options = tuple(session_by_id)
+                        defaults = [sid for sid in st.session_state.get("pas_gpexe_active_session_ids", []) if sid in session_by_id]
+                        selected_ids = st.multiselect(
+                            "TeamSession locali attive nel PAS",
+                            options=session_options,
+                            default=defaults,
+                            format_func=lambda sid: (
+                                f"{str(session_by_id[sid].get('start_timestamp') or '')[:10]} · "
+                                f"{session_by_id[sid].get('session_name') or sid}"
+                            ),
+                            key="pas_gpexe_active_session_ids",
+                            help="Senza selezione vengono utilizzate tutte le TeamSession già memorizzate localmente.",
+                        )
+                        st.success(
+                            f"Dati GPExe READY disponibili: {len(api_sessions)} TeamSession · "
+                            f"{len(selected_ids) or len(api_sessions)} selezionate."
+                        )
+                    else:
+                        st.info("Nessuna TeamSession GPExe presente nel database PAS Connect locale.")
+                if st.session_state.get("pas_gpexe_input_mode") == "File export":
+                    with pas_connect_options:
+                        gpexe_export = st.file_uploader(
+                            "Carica export GPExe",
+                            type=["csv", "xlsx", "xls", "json"],
+                            help=(
+                                "Carica un export completo GPExe. Il file viene validato e "
+                                "utilizzato in memoria; il database Excel incluso non viene modificato."
+                            ),
+                            key="pas_gpexe_export_upload",
+                        )
+                        if gpexe_export is None:
+                            st.info("Nessun export GPExe caricato: il PAS continua a utilizzare Excel.")
+                        elif using_gpexe and database_source_label == "Export GPExe caricato":
+                            st.success(
+                                f"Export GPExe attivo: {gpexe_export.name} · "
+                                f"{database_info['rows']} righe importate."
+                            )
 
-                st.session_state["pas_gpexe_runtime_token"] = runtime_token
-                st.session_state["pas_gpexe_runtime_refresh_token"] = client.refresh_token
-                st.session_state["pas_gpexe_connected"] = True
-                st.session_state["pas_gpexe_connected_base_url"] = config.base_url.rstrip("/")
-                st.session_state["pas_gpexe_team_count"] = team_count
-                st.session_state["pas_gpexe_connected_at"] = pd.Timestamp.now(tz="UTC").isoformat()
-                st.success("Connessione GraphQL GPExe riuscita. Token verificato nella sessione corrente.")
-                st.rerun()
-            except Exception as exc:
-                for state_key in (
-                    "pas_gpexe_runtime_token",
-                    "pas_gpexe_runtime_refresh_token",
-                    "pas_gpexe_connected",
-                    "pas_gpexe_connected_base_url",
-                    "pas_gpexe_team_count",
-                    "pas_gpexe_connected_at",
-                ):
-                    st.session_state.pop(state_key, None)
-                st.error(f"Connessione GPExe non riuscita: {exc}")
+        with pas_connect_advanced:
+            render_metric_catalog_section(
+                pas_connect_database, embedded=True
+            )
+            render_metric_usage_section(
+                pas_connect_database, base_dir, embedded=True
+            )
+            render_developer_tools(
+                selected_provider=requested_provider_id,
+                active_frame=raw,
+                excel_source=database_excel_source,
+                database_path=pas_connect_database.path,
+                embedded=True,
+            )
+
+        with pas_connect_main:
+            st.markdown("##### Connessione GPExe")
+            st.caption(
+                "La connessione verifica esclusivamente l'autenticazione GraphQL. "
+                "Excel resta la sorgente predefinita e non viene modificato."
+            )
+
+            if is_gpexe_connected:
+                connected_team_count = st.session_state.get("pas_gpexe_team_count")
+                connected_base_url = st.session_state.get("pas_gpexe_connected_base_url", "")
+                status_message = "Connesso a GPExe"
+                if connected_team_count is not None:
+                    status_message += f" · Team rilevati: {connected_team_count}"
+                if connected_base_url:
+                    status_message += f" · {connected_base_url}"
+                st.success(status_message)
+            else:
+                st.info("Stato connessione: non connesso")
+
+            try:
+                gpexe_secrets = dict(st.secrets.get("gpexe", {}))
+            except Exception:
+                gpexe_secrets = {}
+
+            gpexe_base_url = st.text_input(
+                "API base URL",
+                value=str(gpexe_secrets.get("base_url", "https://e15.gpexe.com/ui/v2/")),
+                key="pas_gpexe_base_url",
+                help="Endpoint GraphQL verificato dell’istanza GPExe: https://e15.gpexe.com/ui/v2/",
+            )
+            gpexe_username = st.text_input(
+                "Email GPExe",
+                value=str(gpexe_secrets.get("username", "")),
+                key="pas_gpexe_username",
+            )
+            gpexe_password = st.text_input(
+                "Password",
+                value=str(gpexe_secrets.get("password", "")),
+                type="password",
+                key="pas_gpexe_password",
+            )
+
+            if st.button(
+                "Connetti a GPExe",
+                key="pas_gpexe_connect",
+                use_container_width=True,
+            ):
+                try:
+                    config = GPExeConfig(
+                        base_url=gpexe_base_url.strip(),
+                        username=gpexe_username.strip(),
+                        password=gpexe_password,
+                        timeout_seconds=20.0,
+                        verify_tls=True,
+                    )
+                    config.validate(require_credentials=True)
+                    client = GPExeGraphQLClient(config)
+                    client.test_connection()
+                    runtime_token = client.token
+                    team_count = None
+
+                    st.session_state["pas_gpexe_runtime_token"] = runtime_token
+                    st.session_state["pas_gpexe_runtime_refresh_token"] = client.refresh_token
+                    st.session_state["pas_gpexe_connected"] = True
+                    st.session_state["pas_gpexe_connected_base_url"] = config.base_url.rstrip("/")
+                    st.session_state["pas_gpexe_team_count"] = team_count
+                    st.session_state["pas_gpexe_connected_at"] = pd.Timestamp.now(tz="UTC").isoformat()
+                    st.success("Connessione GraphQL GPExe riuscita. Token verificato nella sessione corrente.")
+                    st.rerun()
+                except Exception as exc:
+                    for state_key in (
+                        "pas_gpexe_runtime_token",
+                        "pas_gpexe_runtime_refresh_token",
+                        "pas_gpexe_connected",
+                        "pas_gpexe_connected_base_url",
+                        "pas_gpexe_team_count",
+                        "pas_gpexe_connected_at",
+                    ):
+                        st.session_state.pop(state_key, None)
+                    st.error(f"Connessione GPExe non riuscita: {exc}")
 
         if is_gpexe_connected:
-            st.divider()
-            st.markdown("##### GPExe GraphQL")
-            st.success("Autenticazione GraphQL operativa. Team e TeamSession sono disponibili.")
-            st.caption("Excel e il PAS Core restano invariati: l'import usa esclusivamente il database locale PAS Connect.")
-
-            st.markdown("##### Team e TeamSession")
             teams_foundation = []
             selected_team = {}
-            try:
-                foundation_config = GPExeConfig(
-                    base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
-                    token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
-                    timeout_seconds=30.0, verify_tls=True,
+            selected_ids: set[str] = set()
+            default_end = pd.Timestamp.today().date()
+            default_start = default_end - timedelta(days=6)
+            start_date = default_start
+            end_date = default_end
+            st.session_state.setdefault("pas_gpexe_team_sessions", [])
+            with pas_connect_main:
+                st.markdown("##### Team, stagione e TeamSession")
+                try:
+                    foundation_config = GPExeConfig(
+                        base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                        token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                        timeout_seconds=30.0, verify_tls=True,
+                    )
+                    foundation_provider = GPExeAPIDataProvider(GPExeServices(GPExeClient(foundation_config)))
+                    team_filter = st.selectbox(
+                        "Team da mostrare",
+                        ("Attivi", "Scaduti", "Tutti"),
+                        index=0,
+                        key="pas_gpexe_team_filter",
+                        on_change=invalidate_team_filter_state,
+                        args=(st.session_state,),
+                    )
+                    if "pas_gpexe_teams" not in st.session_state:
+                        active_filter = {"Attivi": True, "Scaduti": False, "Tutti": None}[team_filter]
+                        st.session_state["pas_gpexe_teams"] = foundation_provider.get_teams(active=active_filter)
+                    teams_foundation = st.session_state.get("pas_gpexe_teams", [])
+                    if teams_foundation:
+                        def _entity_label(item):
+                            club = item.get("limitedClub")
+                            club_name = club.get("name") if isinstance(club, dict) else None
+                            parts = [item.get("name"), item.get("season"), club_name]
+                            label = " · ".join(str(part) for part in parts if part not in (None, ""))
+                            return label or str(item.get("id") or "Team")
+                        selected_team_index = st.selectbox(
+                            "Team", range(len(teams_foundation)),
+                            format_func=lambda index: _entity_label(teams_foundation[index]),
+                            key="pas_gpexe_selected_team_index",
+                            on_change=invalidate_athlete_context_state,
+                            args=(st.session_state,),
+                        )
+                        selected_team = teams_foundation[selected_team_index]
+                        st.caption(
+                            f"Team ID: {selected_team.get('id', 'n/d')} · "
+                            f"Stagione: {selected_team.get('season') or 'n/d'}"
+                        )
+                        date_col1, date_col2 = st.columns(2)
+                        with date_col1:
+                            start_date = st.date_input("Data iniziale", value=default_start, key="pas_gpexe_start_date")
+                        with date_col2:
+                            end_date = st.date_input("Data finale", value=default_end, key="pas_gpexe_end_date")
+                        if st.button("Recupera Team Sessions", key="pas_gpexe_get_sessions", use_container_width=True):
+                            team_id = selected_team.get("id") or selected_team.get("pk") or selected_team.get("uuid")
+                            if start_date > end_date:
+                                st.error("La data iniziale non può essere successiva alla data finale.")
+                            else:
+                                st.session_state["pas_gpexe_team_sessions"] = foundation_provider.get_team_sessions(
+                                    team_id, start_date=start_date.isoformat(), end_date=end_date.isoformat(),
+                                )
+                        sessions_foundation = st.session_state.get("pas_gpexe_team_sessions", [])
+                        selected_ids: set[str] = set()
+                        if sessions_foundation:
+                            st.success(f"TeamSession recuperate: {len(sessions_foundation)}")
+                            session_rows = []
+                            for session in sessions_foundation:
+                                category = session.get("category")
+                                session_rows.append({
+                                    "Seleziona": False,
+                                    "id": session.get("id"),
+                                    "categoria": category.get("name") if isinstance(category, dict) else category,
+                                    "data": session.get("startTimestamp"),
+                                    "durata": session.get("duration"),
+                                    "athleteCount": session.get("athleteCount"),
+                                    "matchCycle": session.get("matchCycle"),
+                                    "state": session.get("state"),
+                                    "drill": session.get("drill"),
+                                    "drillEnabled": session.get("drillEnabled"),
+                                })
+                            selection = st.data_editor(
+                                pd.DataFrame(session_rows), hide_index=True, use_container_width=True,
+                                disabled=[column for column in session_rows[0] if column != "Seleziona"],
+                                key="pas_gpexe_session_selection",
+                                on_change=invalidate_athlete_session_state,
+                                args=(st.session_state,),
+                            )
+                            selected_ids = set(selection.loc[selection["Seleziona"], "id"].astype(str))
+                        else:
+                            st.info("Il Team non ha TeamSession nell'intervallo selezionato.")
+                    else:
+                        st.info("Nessun Team disponibile.")
+                except Exception as exc:
+                    st.error(f"Recupero GPExe non riuscito: {exc}")
+
+            with pas_connect_options:
+                st.markdown("##### Configurazione metriche Team")
+                st.caption(
+                    "I profili descrivono il significato dei KPI per Team e stagione. "
+                    "Non modificano Distance, Dashboard, report o calcoli esistenti."
                 )
-                foundation_provider = GPExeAPIDataProvider(GPExeServices(GPExeClient(foundation_config)))
-                team_filter = st.selectbox(
-                    "Team da mostrare",
-                    ("Attivi", "Scaduti", "Tutti"),
-                    index=0,
-                    key="pas_gpexe_team_filter",
-                    on_change=invalidate_team_filter_state,
-                    args=(st.session_state,),
-                )
-                if "pas_gpexe_teams" not in st.session_state:
-                    active_filter = {"Attivi": True, "Scaduti": False, "Tutti": None}[team_filter]
-                    st.session_state["pas_gpexe_teams"] = foundation_provider.get_teams(active=active_filter)
-                teams_foundation = st.session_state.get("pas_gpexe_teams", [])
+                if teams_foundation and selected_team:
+                    profile_team_id = selected_team.get("id")
+                    profile_team_name = str(selected_team.get("name") or "")
+                    profile_season = str(selected_team.get("season") or "")
+                    st.write(
+                        f"**Team ID:** {profile_team_id} · **Team:** {profile_team_name or 'n/d'} · "
+                        f"**Stagione:** {profile_season or 'n/d'}"
+                    )
+                    metric_profile_database = PASConnectDatabase.default()
+                    stored_profiles = metric_profile_database.list_metric_profiles(team_id=profile_team_id)
+                    if stored_profiles:
+                        profile_table = pd.DataFrame([{
+                            "ID": item["id"], "Metrica PAS": item["canonical_metric"],
+                            "KPI provider": item["provider_metric_name"],
+                            "Soglia": format_metric_threshold(item), "Sorgente": item["source"],
+                            "Validità": f"{item.get('valid_from') or '—'} → {item.get('valid_to') or '—'}",
+                            "Verificato": bool(item["verified"]), "Note": item.get("notes"),
+                        } for item in stored_profiles])
+                        st.dataframe(profile_table, hide_index=True, use_container_width=True)
+                    else:
+                        st.info("Nessun profilo metrico salvato per il Team selezionato.")
+
+                    profile_choices = [None, *stored_profiles]
+                    selected_profile = st.selectbox(
+                        "Profilo da creare o aggiornare",
+                        profile_choices,
+                        format_func=lambda item: "Nuovo profilo" if item is None else (
+                            f"#{item['id']} · {item['canonical_metric']} · {item['provider_metric_name']}"
+                        ),
+                        key="pas_metric_profile_selection",
+                    )
+                    current_profile = selected_profile or {}
+                    profile_key = str(current_profile.get("id") or "new")
+                    with st.form(f"pas_metric_profile_form_{profile_key}"):
+                        canonical_metric = st.text_input(
+                            "Metrica canonica PAS", value=str(current_profile.get("canonical_metric") or "")
+                        )
+                        provider_metric_name = st.text_input(
+                            "Nome KPI provider", value=str(current_profile.get("provider_metric_name") or "")
+                        )
+                        threshold_col1, threshold_col2 = st.columns(2)
+                        with threshold_col1:
+                            threshold_min = st.text_input(
+                                "Soglia minima (opzionale)",
+                                value="" if current_profile.get("threshold_min") is None else str(current_profile["threshold_min"]),
+                            )
+                            threshold_min_inclusive = st.checkbox(
+                                "Limite minimo incluso", value=bool(current_profile.get("threshold_min_inclusive"))
+                            )
+                        with threshold_col2:
+                            threshold_max = st.text_input(
+                                "Soglia massima (opzionale)",
+                                value="" if current_profile.get("threshold_max") is None else str(current_profile["threshold_max"]),
+                            )
+                            threshold_max_inclusive = st.checkbox(
+                                "Limite massimo incluso", value=bool(current_profile.get("threshold_max_inclusive"))
+                            )
+                        threshold_unit = st.text_input(
+                            "Unità", value=str(current_profile.get("threshold_unit") or "")
+                        )
+                        source_options = ("GPExe", "Excel")
+                        current_source = str(current_profile.get("source") or "GPExe")
+                        source = st.selectbox(
+                            "Sorgente", source_options,
+                            index=source_options.index(current_source) if current_source in source_options else 0,
+                        )
+                        validity_col1, validity_col2 = st.columns(2)
+                        with validity_col1:
+                            valid_from = st.text_input(
+                                "Data inizio validità (YYYY-MM-DD, opzionale)",
+                                value=str(current_profile.get("valid_from") or ""),
+                            )
+                        with validity_col2:
+                            valid_to = st.text_input(
+                                "Data fine validità (YYYY-MM-DD, opzionale)",
+                                value=str(current_profile.get("valid_to") or ""),
+                            )
+                        verified = st.checkbox("Verificato", value=bool(current_profile.get("verified")))
+                        notes = st.text_area("Note", value=str(current_profile.get("notes") or ""))
+                        try:
+                            preview = {
+                                "threshold_min": None if not threshold_min.strip() else float(threshold_min),
+                                "threshold_max": None if not threshold_max.strip() else float(threshold_max),
+                                "threshold_min_inclusive": threshold_min_inclusive,
+                                "threshold_max_inclusive": threshold_max_inclusive,
+                                "threshold_unit": threshold_unit,
+                            }
+                            st.caption(f"Rappresentazione: {format_metric_threshold(preview)}")
+                        except ValueError:
+                            st.warning("Inserisci soglie numeriche valide.")
+                        save_profile = st.form_submit_button("Salva profilo metrico", use_container_width=True)
+                    if save_profile:
+                        try:
+                            catalog_status = metric_profile_database.metric_profile_catalog_status(
+                                canonical_metric
+                            )
+                            if catalog_status == "ORPHAN":
+                                raise ValueError(
+                                    "La metrica canonica non esiste nel Catalogo metriche PAS. "
+                                    "Crea prima il relativo mapping."
+                                )
+                            _, inserted = metric_profile_database.upsert_metric_profile({
+                                "id": current_profile.get("id"), "team_id": profile_team_id,
+                                "team_name": profile_team_name, "season": profile_season,
+                                "canonical_metric": canonical_metric, "provider_metric_name": provider_metric_name,
+                                "threshold_min": threshold_min, "threshold_max": threshold_max,
+                                "threshold_min_inclusive": threshold_min_inclusive,
+                                "threshold_max_inclusive": threshold_max_inclusive,
+                                "threshold_unit": threshold_unit, "source": source,
+                                "valid_from": valid_from, "valid_to": valid_to,
+                                "verified": verified, "notes": notes,
+                            })
+                            st.success("Profilo metrico creato." if inserted else "Profilo metrico aggiornato.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Profilo metrico non salvato: {exc}")
+                else:
+                    st.info("Recupera e seleziona un Team GPExe per configurarne i profili metrici.")
+
+                st.markdown("##### Athletes")
                 if teams_foundation:
-                    def _entity_label(item):
-                        club = item.get("limitedClub")
-                        club_name = club.get("name") if isinstance(club, dict) else None
-                        parts = [item.get("name"), item.get("season"), club_name]
-                        label = " · ".join(str(part) for part in parts if part not in (None, ""))
-                        return label or str(item.get("id") or "Team")
-                    selected_team_index = st.selectbox(
-                        "Team", range(len(teams_foundation)),
-                        format_func=lambda index: _entity_label(teams_foundation[index]),
-                        key="pas_gpexe_selected_team_index",
+                    athlete_filter = st.selectbox(
+                        "Athletes da mostrare", ("Current", "Expired", "Tutti"), index=0,
+                        key="pas_gpexe_athlete_filter", on_change=invalidate_athlete_context_state,
+                        args=(st.session_state,),
+                    )
+                    athlete_scope = st.selectbox(
+                        "Atleti da mostrare",
+                        ("Tutti gli associati al Team", "Solo partecipanti alle TeamSession selezionate"),
+                        index=1 if team_filter == "Scaduti" else 0,
+                        key="pas_gpexe_athlete_scope",
                         on_change=invalidate_athlete_context_state,
                         args=(st.session_state,),
                     )
-                    selected_team = teams_foundation[selected_team_index]
-                    default_end = pd.Timestamp.today().date()
-                    default_start = default_end - timedelta(days=6)
-                    date_col1, date_col2 = st.columns(2)
-                    with date_col1:
-                        start_date = st.date_input("Data iniziale", value=default_start, key="pas_gpexe_start_date")
-                    with date_col2:
-                        end_date = st.date_input("Data finale", value=default_end, key="pas_gpexe_end_date")
-                    if st.button("Recupera Team Sessions", key="pas_gpexe_get_sessions", use_container_width=True):
-                        team_id = selected_team.get("id") or selected_team.get("pk") or selected_team.get("uuid")
-                        if start_date > end_date:
-                            st.error("La data iniziale non può essere successiva alla data finale.")
-                        else:
-                            st.session_state["pas_gpexe_team_sessions"] = foundation_provider.get_team_sessions(
-                                team_id, start_date=start_date.isoformat(), end_date=end_date.isoformat(),
-                            )
-                    sessions_foundation = st.session_state.get("pas_gpexe_team_sessions", [])
-                    selected_ids: set[str] = set()
-                    if sessions_foundation:
-                        st.success(f"TeamSession recuperate: {len(sessions_foundation)}")
-                        session_rows = []
-                        for session in sessions_foundation:
-                            category = session.get("category")
-                            session_rows.append({
-                                "Seleziona": False,
-                                "id": session.get("id"),
-                                "categoria": category.get("name") if isinstance(category, dict) else category,
-                                "data": session.get("startTimestamp"),
-                                "durata": session.get("duration"),
-                                "athleteCount": session.get("athleteCount"),
-                                "matchCycle": session.get("matchCycle"),
-                                "state": session.get("state"),
-                                "drill": session.get("drill"),
-                                "drillEnabled": session.get("drillEnabled"),
-                            })
-                        selection = st.data_editor(
-                            pd.DataFrame(session_rows), hide_index=True, use_container_width=True,
-                            disabled=[column for column in session_rows[0] if column != "Seleziona"],
-                            key="pas_gpexe_session_selection",
-                            on_change=invalidate_athlete_session_state,
-                            args=(st.session_state,),
+                    participants_only = athlete_scope == "Solo partecipanti alle TeamSession selezionate"
+                    needs_expired = athlete_filter in {"Expired", "Tutti"}
+                    automatic_club_id = resolve_team_club_id(selected_team)
+                    club_id = automatic_club_id
+                    if needs_expired:
+                        club_id = resolve_team_club_id(
+                            selected_team,
+                            st.text_input(
+                                "Club ID GPExe",
+                                value=automatic_club_id or "",
+                                key=f"pas_gpexe_club_id_{selected_team.get('id')}",
+                                on_change=invalidate_athlete_context_state,
+                                args=(st.session_state,),
+                                help="Necessario per gli Athletes Expired; viene precompilato quando disponibile nel Team.",
+                            ),
                         )
-                        selected_ids = set(selection.loc[selection["Seleziona"], "id"].astype(str))
-                        if st.button("Importa nel database PAS", key="pas_gpexe_import_sessions", use_container_width=True):
-                            selected_sessions = [item for item in sessions_foundation if str(item.get("id")) in selected_ids]
-                            if not selected_sessions:
-                                st.warning("Seleziona almeno una TeamSession da importare.")
+                    if needs_expired and club_id in (None, ""):
+                        st.warning("Club ID non disponibile per recuperare gli Athletes Expired.")
+                    if participants_only and not selected_ids:
+                        st.info("Seleziona almeno una TeamSession per ricostruire la rosa del periodo.")
+                    if st.button("Recupera Athletes", key="pas_gpexe_get_athletes", use_container_width=True):
+                        try:
+                            if participants_only and not selected_ids:
+                                raise ValueError("Seleziona almeno una TeamSession per ricostruire la rosa del periodo.")
+                            if not participants_only and needs_expired and club_id in (None, ""):
+                                raise ValueError("Club ID non disponibile per recuperare gli Athletes Expired.")
+                            if participants_only:
+                                participant_results = []
+                                participant_errors = []
+                                for team_session_id in selected_ids:
+                                    try:
+                                        participant_results.append({
+                                            "team_session_id": team_session_id,
+                                            "result": foundation_provider.get_team_session_athlete_sessions(
+                                                team_session_id, template_id=None, drill=None,
+                                            ),
+                                        })
+                                    except Exception as exc:
+                                        participant_errors.append(team_session_error_diagnostic(
+                                            exc, team_session_id=team_session_id, template_id=None,
+                                            drill=None, fields_limit=None,
+                                            secrets=(foundation_config.token, foundation_config.password),
+                                        ))
+                                fetched_athletes = athletes_from_team_session_results(participant_results)
+                                st.session_state["pas_gpexe_athlete_session_results"] = participant_results
+                                st.session_state["pas_gpexe_athlete_session_errors"] = participant_errors
+                                diagnostics = {
+                                    "operationName": "TeamSessionAthletesession",
+                                    "received": sum(len(bundle["result"].get("athleteSessions") or []) for bundle in participant_results),
+                                    "count": len(fetched_athletes), "serverReceived": len(fetched_athletes),
+                                    "teamMatched": len(fetched_athletes), "teamId": str(selected_team.get("id")),
+                                }
                             else:
-                                team_id = selected_team.get("id")
-                                mapped = [map_team_session({**item, "team": team_id}) for item in selected_sessions]
-                                result = PASConnectDatabase.default().upsert_team_sessions({"sessions": mapped})
-                                st.success(f"Importazione completata: {result.inserted} nuove · {result.updated} aggiornate.")
-                    else:
-                        st.info("Il Team non ha TeamSession nell'intervallo selezionato.")
-                else:
-                    st.info("Nessun Team disponibile.")
-            except Exception as exc:
-                st.error(f"Recupero GPExe non riuscito: {exc}")
-
-            st.markdown("##### Configurazione metriche Team")
-            st.caption(
-                "I profili descrivono il significato dei KPI per Team e stagione. "
-                "Non modificano Distance, Dashboard, report o calcoli esistenti."
-            )
-            if teams_foundation and selected_team:
-                profile_team_id = selected_team.get("id")
-                profile_team_name = str(selected_team.get("name") or "")
-                profile_season = str(selected_team.get("season") or "")
-                st.write(
-                    f"**Team ID:** {profile_team_id} · **Team:** {profile_team_name or 'n/d'} · "
-                    f"**Stagione:** {profile_season or 'n/d'}"
-                )
-                metric_profile_database = PASConnectDatabase.default()
-                stored_profiles = metric_profile_database.list_metric_profiles(team_id=profile_team_id)
-                if stored_profiles:
-                    profile_table = pd.DataFrame([{
-                        "ID": item["id"], "Metrica PAS": item["canonical_metric"],
-                        "KPI provider": item["provider_metric_name"],
-                        "Soglia": format_metric_threshold(item), "Sorgente": item["source"],
-                        "Validità": f"{item.get('valid_from') or '—'} → {item.get('valid_to') or '—'}",
-                        "Verificato": bool(item["verified"]), "Note": item.get("notes"),
-                    } for item in stored_profiles])
-                    st.dataframe(profile_table, hide_index=True, use_container_width=True)
-                else:
-                    st.info("Nessun profilo metrico salvato per il Team selezionato.")
-
-                profile_choices = [None, *stored_profiles]
-                selected_profile = st.selectbox(
-                    "Profilo da creare o aggiornare",
-                    profile_choices,
-                    format_func=lambda item: "Nuovo profilo" if item is None else (
-                        f"#{item['id']} · {item['canonical_metric']} · {item['provider_metric_name']}"
-                    ),
-                    key="pas_metric_profile_selection",
-                )
-                current_profile = selected_profile or {}
-                profile_key = str(current_profile.get("id") or "new")
-                with st.form(f"pas_metric_profile_form_{profile_key}"):
-                    canonical_metric = st.text_input(
-                        "Metrica canonica PAS", value=str(current_profile.get("canonical_metric") or "")
-                    )
-                    provider_metric_name = st.text_input(
-                        "Nome KPI provider", value=str(current_profile.get("provider_metric_name") or "")
-                    )
-                    threshold_col1, threshold_col2 = st.columns(2)
-                    with threshold_col1:
-                        threshold_min = st.text_input(
-                            "Soglia minima (opzionale)",
-                            value="" if current_profile.get("threshold_min") is None else str(current_profile["threshold_min"]),
-                        )
-                        threshold_min_inclusive = st.checkbox(
-                            "Limite minimo incluso", value=bool(current_profile.get("threshold_min_inclusive"))
-                        )
-                    with threshold_col2:
-                        threshold_max = st.text_input(
-                            "Soglia massima (opzionale)",
-                            value="" if current_profile.get("threshold_max") is None else str(current_profile["threshold_max"]),
-                        )
-                        threshold_max_inclusive = st.checkbox(
-                            "Limite massimo incluso", value=bool(current_profile.get("threshold_max_inclusive"))
-                        )
-                    threshold_unit = st.text_input(
-                        "Unità", value=str(current_profile.get("threshold_unit") or "")
-                    )
-                    source_options = ("GPExe", "Excel")
-                    current_source = str(current_profile.get("source") or "GPExe")
-                    source = st.selectbox(
-                        "Sorgente", source_options,
-                        index=source_options.index(current_source) if current_source in source_options else 0,
-                    )
-                    validity_col1, validity_col2 = st.columns(2)
-                    with validity_col1:
-                        valid_from = st.text_input(
-                            "Data inizio validità (YYYY-MM-DD, opzionale)",
-                            value=str(current_profile.get("valid_from") or ""),
-                        )
-                    with validity_col2:
-                        valid_to = st.text_input(
-                            "Data fine validità (YYYY-MM-DD, opzionale)",
-                            value=str(current_profile.get("valid_to") or ""),
-                        )
-                    verified = st.checkbox("Verificato", value=bool(current_profile.get("verified")))
-                    notes = st.text_area("Note", value=str(current_profile.get("notes") or ""))
-                    try:
-                        preview = {
-                            "threshold_min": None if not threshold_min.strip() else float(threshold_min),
-                            "threshold_max": None if not threshold_max.strip() else float(threshold_max),
-                            "threshold_min_inclusive": threshold_min_inclusive,
-                            "threshold_max_inclusive": threshold_max_inclusive,
-                            "threshold_unit": threshold_unit,
-                        }
-                        st.caption(f"Rappresentazione: {format_metric_threshold(preview)}")
-                    except ValueError:
-                        st.warning("Inserisci soglie numeriche valide.")
-                    save_profile = st.form_submit_button("Salva profilo metrico", use_container_width=True)
-                if save_profile:
-                    try:
-                        catalog_status = metric_profile_database.metric_profile_catalog_status(
-                            canonical_metric
-                        )
-                        if catalog_status == "ORPHAN":
-                            raise ValueError(
-                                "La metrica canonica non esiste nel Catalogo metriche PAS. "
-                                "Crea prima il relativo mapping."
+                                tab = {"Current": "CURRENT", "Expired": "EXPIRED", "Tutti": None}[athlete_filter]
+                                fetched_athletes = foundation_provider.get_athletes(
+                                    selected_team.get("id"), club_id=club_id, tab=tab,
+                                )
+                                diagnostics = foundation_provider.services.last_diagnostics
+                            store_athlete_fetch_result(
+                                st.session_state, fetched_athletes, diagnostics,
                             )
-                        _, inserted = metric_profile_database.upsert_metric_profile({
-                            "id": current_profile.get("id"), "team_id": profile_team_id,
-                            "team_name": profile_team_name, "season": profile_season,
-                            "canonical_metric": canonical_metric, "provider_metric_name": provider_metric_name,
-                            "threshold_min": threshold_min, "threshold_max": threshold_max,
-                            "threshold_min_inclusive": threshold_min_inclusive,
-                            "threshold_max_inclusive": threshold_max_inclusive,
-                            "threshold_unit": threshold_unit, "source": source,
-                            "valid_from": valid_from, "valid_to": valid_to,
-                            "verified": verified, "notes": notes,
-                        })
-                        st.success("Profilo metrico creato." if inserted else "Profilo metrico aggiornato.")
-                        st.rerun()
-                    except Exception as exc:
-                        st.error(f"Profilo metrico non salvato: {exc}")
-            else:
-                st.info("Recupera e seleziona un Team GPExe per configurarne i profili metrici.")
+                        except Exception as exc:
+                            st.session_state["pas_gpexe_athletes_loaded"] = True
+                            st.session_state["pas_gpexe_athletes_diagnostics"] = {
+                                "operationName": "Athletes", "error": str(exc),
+                            }
+                            st.error(f"Recupero Athletes non riuscito: {exc}")
+                    athletes_foundation = st.session_state.get("pas_gpexe_athletes", [])
+                    athletes_diagnostics = st.session_state.get("pas_gpexe_athletes_diagnostics", {})
+                    if athletes_diagnostics:
+                        diagnostic_text = (
+                            f"operationName: {athletes_diagnostics.get('operationName', 'Athletes')} · "
+                            f"ricevuti dal server: {athletes_diagnostics.get('serverReceived', athletes_diagnostics.get('received', 0))} · "
+                            f"appartenenti al Team: {athletes_diagnostics.get('teamMatched', athletes_diagnostics.get('received', 0))} · "
+                            f"count server: {athletes_diagnostics.get('count', 'n/d')} · "
+                            f"teamId: {athletes_diagnostics.get('teamId', selected_team.get('id', 'n/d'))}"
+                        )
+                        if athletes_diagnostics.get("error"):
+                            diagnostic_text += f" · errore: {athletes_diagnostics['error']}"
+                        st.caption(diagnostic_text)
+                    if athletes_foundation:
+                        athlete_rows = [{
+                            "Seleziona": False, "id": item.get("id"),
+                            "cognome": item.get("lastName"), "nome": item.get("firstName"),
+                            "shortName": item.get("shortName"), "attivo": item.get("isActive"),
+                            "hasTracks": item.get("hasTracks"),
+                            "Presenze TeamSession": item.get("teamSessionAppearances"),
+                        } for item in athletes_foundation]
+                        athlete_selection = st.data_editor(
+                            pd.DataFrame(athlete_rows), hide_index=True, use_container_width=True,
+                            disabled=[column for column in athlete_rows[0] if column != "Seleziona"],
+                            key="pas_gpexe_athlete_selection",
+                        )
+                        selected_athlete_ids = set(
+                            athlete_selection.loc[athlete_selection["Seleziona"], "id"].astype(str)
+                        )
+                        if st.button("Importa Athletes nel database PAS", key="pas_gpexe_import_athletes", use_container_width=True):
+                            chosen = [item for item in athletes_foundation if str(item.get("id")) in selected_athlete_ids]
+                            if not chosen:
+                                st.warning("Seleziona almeno un Athlete da importare.")
+                            else:
+                                mapped = [map_graphql_athlete(item, team_id=selected_team.get("id")) for item in chosen]
+                                inserted, updated = PASConnectDatabase.default().upsert_graphql_athletes(mapped)
+                                st.success(f"Athletes importati: {inserted} nuovi · {updated} aggiornati.")
+                    elif st.session_state.get("pas_gpexe_athletes_loaded") and not athletes_diagnostics.get("error"):
+                        if int(athletes_diagnostics.get("serverReceived") or 0) > 0 and int(athletes_diagnostics.get("teamMatched") or 0) == 0:
+                            st.info("Nessun atleta associato al Team selezionato.")
+                        else:
+                            st.info("Nessun atleta trovato per il Team e il filtro selezionati.")
 
-            st.markdown("##### Athletes")
             if teams_foundation:
-                athlete_filter = st.selectbox(
-                    "Athletes da mostrare", ("Current", "Expired", "Tutti"), index=0,
-                    key="pas_gpexe_athlete_filter", on_change=invalidate_athlete_context_state,
-                    args=(st.session_state,),
-                )
-                athlete_scope = st.selectbox(
-                    "Atleti da mostrare",
-                    ("Tutti gli associati al Team", "Solo partecipanti alle TeamSession selezionate"),
-                    index=1 if team_filter == "Scaduti" else 0,
-                    key="pas_gpexe_athlete_scope",
-                    on_change=invalidate_athlete_context_state,
-                    args=(st.session_state,),
-                )
-                participants_only = athlete_scope == "Solo partecipanti alle TeamSession selezionate"
-                needs_expired = athlete_filter in {"Expired", "Tutti"}
-                automatic_club_id = resolve_team_club_id(selected_team)
-                club_id = automatic_club_id
-                if needs_expired:
-                    club_id = resolve_team_club_id(
-                        selected_team,
-                        st.text_input(
-                            "Club ID GPExe",
-                            value=automatic_club_id or "",
-                            key=f"pas_gpexe_club_id_{selected_team.get('id')}",
-                            on_change=invalidate_athlete_context_state,
-                            args=(st.session_state,),
-                            help="Necessario per gli Athletes Expired; viene precompilato quando disponibile nel Team.",
-                        ),
-                    )
-                if needs_expired and club_id in (None, ""):
-                    st.warning("Club ID non disponibile per recuperare gli Athletes Expired.")
-                if participants_only and not selected_ids:
-                    st.info("Seleziona almeno una TeamSession per ricostruire la rosa del periodo.")
-                if st.button("Recupera Athletes", key="pas_gpexe_get_athletes", use_container_width=True):
-                    try:
-                        if participants_only and not selected_ids:
-                            raise ValueError("Seleziona almeno una TeamSession per ricostruire la rosa del periodo.")
-                        if not participants_only and needs_expired and club_id in (None, ""):
-                            raise ValueError("Club ID non disponibile per recuperare gli Athletes Expired.")
-                        if participants_only:
-                            participant_results = []
-                            participant_errors = []
+                with pas_connect_advanced:
+                    st.markdown("##### Athlete Sessions e KPI")
+                    template_id = st.text_input("Template ID (opzionale)", key="pas_gpexe_template_id")
+                    drill_id = st.text_input("Drill ID (opzionale)", key="pas_gpexe_drill_id")
+                    fields_limit_text = st.text_input("Fields limit (opzionale)", key="pas_gpexe_fields_limit")
+                    if st.button("Recupera Athlete Sessions", key="pas_gpexe_get_athlete_sessions", use_container_width=True):
+                        if not selected_ids:
+                            st.warning("Seleziona almeno una TeamSession.")
+                        else:
+                            results = []
+                            errors = []
                             for team_session_id in selected_ids:
                                 try:
-                                    participant_results.append({
-                                        "team_session_id": team_session_id,
-                                        "result": foundation_provider.get_team_session_athlete_sessions(
-                                            team_session_id, template_id=None, drill=None,
-                                        ),
-                                    })
+                                    result = foundation_provider.get_team_session_athlete_sessions(
+                                        team_session_id,
+                                        template_id=template_id,
+                                        drill=drill_id,
+                                        fields_limit=fields_limit_text,
+                                    )
+                                    results.append({"team_session_id": team_session_id, "result": result})
                                 except Exception as exc:
-                                    participant_errors.append(team_session_error_diagnostic(
-                                        exc, team_session_id=team_session_id, template_id=None,
-                                        drill=None, fields_limit=None,
+                                    errors.append(team_session_error_diagnostic(
+                                        exc, team_session_id=team_session_id,
+                                        template_id=template_id, drill=drill_id,
+                                        fields_limit=fields_limit_text,
                                         secrets=(foundation_config.token, foundation_config.password),
                                     ))
-                            fetched_athletes = athletes_from_team_session_results(participant_results)
-                            st.session_state["pas_gpexe_athlete_session_results"] = participant_results
-                            st.session_state["pas_gpexe_athlete_session_errors"] = participant_errors
-                            diagnostics = {
-                                "operationName": "TeamSessionAthletesession",
-                                "received": sum(len(bundle["result"].get("athleteSessions") or []) for bundle in participant_results),
-                                "count": len(fetched_athletes), "serverReceived": len(fetched_athletes),
-                                "teamMatched": len(fetched_athletes), "teamId": str(selected_team.get("id")),
-                            }
-                        else:
-                            tab = {"Current": "CURRENT", "Expired": "EXPIRED", "Tutti": None}[athlete_filter]
-                            fetched_athletes = foundation_provider.get_athletes(
-                                selected_team.get("id"), club_id=club_id, tab=tab,
+                            st.session_state["pas_gpexe_athlete_session_results"] = results
+                            st.session_state["pas_gpexe_athlete_session_errors"] = errors
+                    athlete_session_results = st.session_state.get("pas_gpexe_athlete_session_results", [])
+                    athlete_session_errors = normalize_team_session_error_diagnostics(
+                        st.session_state.get("pas_gpexe_athlete_session_errors", [])
+                    )
+                    st.session_state["pas_gpexe_athlete_session_errors"] = athlete_session_errors
+                    if athlete_session_results or athlete_session_errors:
+                        summary = []
+                        for bundle in athlete_session_results:
+                            sessions = bundle["result"].get("athleteSessions") or []
+                            kpi_count = sum(len(item.get("identifierKpi") or []) + len(item.get("kpi") or []) for item in sessions)
+                            summary.append({"TeamSession": bundle["team_session_id"], "AthleteSession": len(sessions), "KPI": kpi_count, "Errori": 0})
+                        summary.extend({"TeamSession": item["teamSessionId"], "AthleteSession": 0, "KPI": 0, "Errori": 1} for item in athlete_session_errors)
+                        st.dataframe(pd.DataFrame(summary), hide_index=True, use_container_width=True)
+                        if athlete_session_errors:
+                            st.markdown("###### Diagnostica TeamSessionAthletesession")
+                            diagnostic_frame = pd.DataFrame(athlete_session_errors).reindex(
+                                columns=TEAM_SESSION_DIAGNOSTIC_COLUMNS,
                             )
-                            diagnostics = foundation_provider.services.last_diagnostics
-                        store_athlete_fetch_result(
-                            st.session_state, fetched_athletes, diagnostics,
+                            st.dataframe(
+                                diagnostic_frame,
+                                hide_index=True, use_container_width=True,
+                            )
+
+            with pas_connect_main:
+                st.divider()
+                st.markdown("##### Sincronizzazione completa")
+                st.caption(
+                    "Orchestrazione esclusivamente GraphQL per TeamSession, AthleteSession, Track e KPI. "
+                    "Ogni TeamSession viene pubblicata atomicamente; Excel non viene consultato né modificato."
+                )
+                if st.button(
+                    "🚀 Sincronizzazione completa GPExe",
+                    key="pas_gpexe_full_sync",
+                    use_container_width=True,
+                    type="primary",
+                    disabled=not bool(selected_team),
+                ):
+                    try:
+                        runtime_config = GPExeConfig(
+                            base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                            token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                            timeout_seconds=120.0,
+                            verify_tls=True,
+                        )
+                        runtime_config.validate(require_credentials=True)
+                        runtime_services = GPExeServices(GPExeClient(runtime_config))
+                        full_database = PASConnectDatabase.default()
+                        progress_bar = st.progress(0, text="Preparazione sincronizzazione...")
+                        log_box = st.empty()
+                        sync_log: list[str] = []
+
+                        def _full_sync_progress(event):
+                            percent = int(((event.index - (0 if event.status == "success" else 1)) / event.total) * 100)
+                            percent = max(0, min(100, percent))
+                            progress_bar.progress(percent, text=event.message)
+                            sync_log.append(f"{event.step}: {event.status} · {event.message}")
+                            log_box.code("\n".join(sync_log[-12:]), language=None)
+
+                        sync_request = SyncRequest(
+                            team_id=int(selected_team.get("id")),
+                            season=str(selected_team.get("season") or "").strip(),
+                            mode="MANUAL", date_from=start_date.isoformat(), date_to=end_date.isoformat(),
+                            selected_session_ids=tuple(sorted(int(item) for item in selected_ids)),
+                        )
+                        full_result = run_full_sync(
+                            runtime_services, full_database, progress=_full_sync_progress,
+                            request=sync_request,
+                        )
+                        progress_bar.progress(100, text="Sincronizzazione completa terminata")
+                        st.session_state["pas_gpexe_last_full_sync"] = full_result
+                        st.success(
+                            f"Sync GraphQL {full_result.status}: "
+                            f"{full_result.counts['success_count']} SUCCESS · "
+                            f"{full_result.counts['partial_count']} PARTIAL · "
+                            f"{full_result.counts['failed_count']} FAILED · "
+                            f"{full_result.counts['skipped_count']} SKIPPED."
                         )
                     except Exception as exc:
-                        st.session_state["pas_gpexe_athletes_loaded"] = True
-                        st.session_state["pas_gpexe_athletes_diagnostics"] = {
-                            "operationName": "Athletes", "error": str(exc),
-                        }
-                        st.error(f"Recupero Athletes non riuscito: {exc}")
-                athletes_foundation = st.session_state.get("pas_gpexe_athletes", [])
-                athletes_diagnostics = st.session_state.get("pas_gpexe_athletes_diagnostics", {})
-                if athletes_diagnostics:
-                    diagnostic_text = (
-                        f"operationName: {athletes_diagnostics.get('operationName', 'Athletes')} · "
-                        f"ricevuti dal server: {athletes_diagnostics.get('serverReceived', athletes_diagnostics.get('received', 0))} · "
-                        f"appartenenti al Team: {athletes_diagnostics.get('teamMatched', athletes_diagnostics.get('received', 0))} · "
-                        f"count server: {athletes_diagnostics.get('count', 'n/d')} · "
-                        f"teamId: {athletes_diagnostics.get('teamId', selected_team.get('id', 'n/d'))}"
-                    )
-                    if athletes_diagnostics.get("error"):
-                        diagnostic_text += f" · errore: {athletes_diagnostics['error']}"
-                    st.caption(diagnostic_text)
-                if athletes_foundation:
-                    athlete_rows = [{
-                        "Seleziona": False, "id": item.get("id"),
-                        "cognome": item.get("lastName"), "nome": item.get("firstName"),
-                        "shortName": item.get("shortName"), "attivo": item.get("isActive"),
-                        "hasTracks": item.get("hasTracks"),
-                        "Presenze TeamSession": item.get("teamSessionAppearances"),
-                    } for item in athletes_foundation]
-                    athlete_selection = st.data_editor(
-                        pd.DataFrame(athlete_rows), hide_index=True, use_container_width=True,
-                        disabled=[column for column in athlete_rows[0] if column != "Seleziona"],
-                        key="pas_gpexe_athlete_selection",
-                    )
-                    selected_athlete_ids = set(
-                        athlete_selection.loc[athlete_selection["Seleziona"], "id"].astype(str)
-                    )
-                    if st.button("Importa Athletes nel database PAS", key="pas_gpexe_import_athletes", use_container_width=True):
-                        chosen = [item for item in athletes_foundation if str(item.get("id")) in selected_athlete_ids]
-                        if not chosen:
-                            st.warning("Seleziona almeno un Athlete da importare.")
-                        else:
-                            mapped = [map_graphql_athlete(item, team_id=selected_team.get("id")) for item in chosen]
-                            inserted, updated = PASConnectDatabase.default().upsert_graphql_athletes(mapped)
-                            st.success(f"Athletes importati: {inserted} nuovi · {updated} aggiornati.")
-                elif st.session_state.get("pas_gpexe_athletes_loaded") and not athletes_diagnostics.get("error"):
-                    if int(athletes_diagnostics.get("serverReceived") or 0) > 0 and int(athletes_diagnostics.get("teamMatched") or 0) == 0:
-                        st.info("Nessun atleta associato al Team selezionato.")
-                    else:
-                        st.info("Nessun atleta trovato per il Team e il filtro selezionati.")
-
-                st.markdown("##### Athlete Sessions e KPI")
-                template_id = st.text_input("Template ID (opzionale)", key="pas_gpexe_template_id")
-                drill_id = st.text_input("Drill ID (opzionale)", key="pas_gpexe_drill_id")
-                fields_limit_text = st.text_input("Fields limit (opzionale)", key="pas_gpexe_fields_limit")
-                if st.button("Recupera Athlete Sessions", key="pas_gpexe_get_athlete_sessions", use_container_width=True):
-                    if not selected_ids:
-                        st.warning("Seleziona almeno una TeamSession.")
-                    else:
-                        results = []
-                        errors = []
-                        for team_session_id in selected_ids:
-                            try:
-                                result = foundation_provider.get_team_session_athlete_sessions(
-                                    team_session_id,
-                                    template_id=template_id,
-                                    drill=drill_id,
-                                    fields_limit=fields_limit_text,
-                                )
-                                results.append({"team_session_id": team_session_id, "result": result})
-                            except Exception as exc:
-                                errors.append(team_session_error_diagnostic(
-                                    exc, team_session_id=team_session_id,
-                                    template_id=template_id, drill=drill_id,
-                                    fields_limit=fields_limit_text,
-                                    secrets=(foundation_config.token, foundation_config.password),
-                                ))
-                        st.session_state["pas_gpexe_athlete_session_results"] = results
-                        st.session_state["pas_gpexe_athlete_session_errors"] = errors
-                athlete_session_results = st.session_state.get("pas_gpexe_athlete_session_results", [])
-                athlete_session_errors = normalize_team_session_error_diagnostics(
-                    st.session_state.get("pas_gpexe_athlete_session_errors", [])
-                )
-                st.session_state["pas_gpexe_athlete_session_errors"] = athlete_session_errors
-                if athlete_session_results or athlete_session_errors:
-                    summary = []
-                    for bundle in athlete_session_results:
-                        sessions = bundle["result"].get("athleteSessions") or []
-                        kpi_count = sum(len(item.get("identifierKpi") or []) + len(item.get("kpi") or []) for item in sessions)
-                        summary.append({"TeamSession": bundle["team_session_id"], "AthleteSession": len(sessions), "KPI": kpi_count, "Errori": 0})
-                    summary.extend({"TeamSession": item["teamSessionId"], "AthleteSession": 0, "KPI": 0, "Errori": 1} for item in athlete_session_errors)
-                    st.dataframe(pd.DataFrame(summary), hide_index=True, use_container_width=True)
-                    if athlete_session_errors:
-                        st.markdown("###### Diagnostica TeamSessionAthletesession")
-                        diagnostic_frame = pd.DataFrame(athlete_session_errors).reindex(
-                            columns=TEAM_SESSION_DIAGNOSTIC_COLUMNS,
-                        )
-                        st.dataframe(
-                            diagnostic_frame,
-                            hide_index=True, use_container_width=True,
-                        )
-                    if st.button("Importa Athlete Sessions e KPI nel database PAS", key="pas_gpexe_import_athlete_sessions", use_container_width=True):
-                        try:
-                            mapped_sessions = []
-                            for bundle in athlete_session_results:
-                                for item in bundle["result"].get("athleteSessions") or []:
-                                    mapped_sessions.append(map_graphql_athlete_session(
-                                        item, team_session_id=bundle["team_session_id"], template_id=template_id or None,
-                                    ))
-                            athlete_session_database = PASConnectDatabase.default()
-                            parent_sessions = [
-                                map_team_session({**item, "team": selected_team.get("id")})
-                                for item in sessions_foundation
-                                if str(item.get("id")) in {str(bundle["team_session_id"]) for bundle in athlete_session_results}
-                            ]
-                            if parent_sessions:
-                                athlete_session_database.upsert_team_sessions({"sessions": parent_sessions})
-                            encountered_athletes = athletes_from_team_session_results(athlete_session_results)
-                            if encountered_athletes:
-                                athlete_session_database.upsert_graphql_athletes([
-                                    map_graphql_athlete(item, team_id=selected_team.get("id"))
-                                    for item in encountered_athletes
-                                ])
-                            inserted, updated, tracks, kpis = athlete_session_database.upsert_graphql_athlete_sessions(mapped_sessions)
-                            st.session_state["pas_gpexe_last_athlete_session_import"] = {
-                                "status": "success",
-                                "message": f"Athlete Sessions: {inserted} nuove · {updated} aggiornate · {tracks} Tracks in UPSERT · {kpis} KPI sostituiti.",
-                            }
-                        except Exception as exc:
-                            st.session_state["pas_gpexe_last_athlete_session_import"] = {
-                                "status": "error",
-                                "message": f"Importazione Athlete Sessions e KPI non riuscita: {exc}",
-                            }
-                    last_import = st.session_state.get("pas_gpexe_last_athlete_session_import")
-                    if isinstance(last_import, dict):
-                        if last_import.get("status") == "success":
-                            st.success(str(last_import.get("message") or "Importazione completata."))
-                        else:
-                            st.error(str(last_import.get("message") or "Importazione non riuscita."))
-
-            st.divider()
-            st.markdown("##### Sincronizzazione completa")
-            st.caption(
-                "Orchestrazione esclusivamente GraphQL per TeamSession, AthleteSession, Track e KPI. "
-                "Ogni TeamSession viene pubblicata atomicamente; Excel non viene consultato né modificato."
-            )
-            if st.button(
-                "🚀 Sincronizzazione completa GPExe",
-                key="pas_gpexe_full_sync",
-                use_container_width=True,
-                type="primary",
-                disabled=not bool(selected_team),
-            ):
-                try:
-                    runtime_config = GPExeConfig(
-                        base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
-                        token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
-                        timeout_seconds=120.0,
-                        verify_tls=True,
-                    )
-                    runtime_config.validate(require_credentials=True)
-                    runtime_services = GPExeServices(GPExeClient(runtime_config))
-                    full_database = PASConnectDatabase.default()
-                    progress_bar = st.progress(0, text="Preparazione sincronizzazione...")
-                    log_box = st.empty()
-                    sync_log: list[str] = []
-
-                    def _full_sync_progress(event):
-                        percent = int(((event.index - (0 if event.status == "success" else 1)) / event.total) * 100)
-                        percent = max(0, min(100, percent))
-                        progress_bar.progress(percent, text=event.message)
-                        sync_log.append(f"{event.step}: {event.status} · {event.message}")
-                        log_box.code("\n".join(sync_log[-12:]), language=None)
-
-                    sync_request = SyncRequest(
-                        team_id=int(selected_team.get("id")),
-                        season=str(selected_team.get("season") or "").strip(),
-                        mode="MANUAL", date_from=start_date.isoformat(), date_to=end_date.isoformat(),
-                        selected_session_ids=tuple(sorted(int(item) for item in selected_ids)),
-                    )
-                    full_result = run_full_sync(
-                        runtime_services, full_database, progress=_full_sync_progress,
-                        request=sync_request,
-                    )
-                    progress_bar.progress(100, text="Sincronizzazione completa terminata")
-                    st.session_state["pas_gpexe_last_full_sync"] = full_result
-                    st.success(
-                        f"Sync GraphQL {full_result.status}: "
-                        f"{full_result.counts['success_count']} SUCCESS · "
-                        f"{full_result.counts['partial_count']} PARTIAL · "
-                        f"{full_result.counts['failed_count']} FAILED · "
-                        f"{full_result.counts['skipped_count']} SKIPPED."
-                    )
-                except Exception as exc:
-                    st.error(f"Sincronizzazione completa GPExe non riuscita: {exc}")
+                        st.error(f"Sincronizzazione completa GPExe non riuscita: {exc}")
 
             sync_database = PASConnectDatabase.default()
             sync_results = sync_database.list_session_sync_results(
                 team_id=int(selected_team.get("id")) if selected_team else None,
             )
+            latest_run_rows = []
             if sync_results:
-                st.markdown("###### Diagnostica Sync (sola lettura)")
-                diagnostic_rows = [{
-                    "run": row["sync_run_id"], "TeamSession": row["provider_session_id"],
-                    "status": row["status"], "readiness": row["readiness"],
-                    "AthleteSession": row["athlete_sessions_count"],
-                    "Track": row["tracks_count"], "KPI": row["kpis_count"],
-                    "operationName": row["operation_name"], "errore": row["error_message"],
-                    "C-01→C-05": row["diagnostics_json"],
-                } for row in sync_results]
-                st.dataframe(pd.DataFrame(diagnostic_rows), hide_index=True, use_container_width=True)
                 latest_run_id = int(sync_results[0]["sync_run_id"])
-                retryable = [row for row in sync_results
-                             if int(row["sync_run_id"]) == latest_run_id
-                             and row["status"] in {"FAILED", "PARTIAL"}]
-                if retryable and selected_team:
-                    retry_session = st.selectbox(
-                        "TeamSession da ritentare",
-                        [int(row["provider_session_id"]) for row in retryable],
-                        key="pas_gpexe_retry_session_id",
-                    )
-                    retry_col1, retry_col2 = st.columns(2)
-                    retry_request = SyncRequest(
-                        team_id=int(selected_team.get("id")),
-                        season=str(selected_team.get("season") or "").strip(),
-                        mode="MANUAL", date_from=start_date.isoformat(), date_to=end_date.isoformat(),
-                    )
-                    with retry_col1:
-                        if st.button("Riprova sessione", key="pas_gpexe_retry_one", use_container_width=True):
-                            retry_sync_session(
-                                foundation_provider.services, sync_database, retry_request,
-                                retry_session, run_id=latest_run_id,
-                            )
-                            st.rerun()
-                    with retry_col2:
-                        if st.button("Riprova tutti gli errori", key="pas_gpexe_retry_errors", use_container_width=True):
-                            retry_sync_errors(
-                                foundation_provider.services, sync_database, retry_request,
-                                run_id=latest_run_id,
-                            )
-                            st.rerun()
-
-            st.divider()
-            st.markdown("##### Sincronizzazioni manuali")
-            st.caption("I comandi seguenti restano disponibili per diagnostica e recuperi mirati.")
-            st.markdown("##### Prima sincronizzazione")
-            st.caption(
-                "Scarica Teams, Categories, Tags e Athletes e li salva nel database PAS Connect "
-                "separato. Il database Excel e le analisi del PAS restano invariati."
-            )
-            if st.button(
-                "Sincronizza anagrafiche GPExe",
-                key="pas_gpexe_sync_reference",
-                use_container_width=True,
-                disabled=True,
-            ):
-                try:
-                    runtime_config = GPExeConfig(
-                        base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
-                        token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
-                        timeout_seconds=30.0,
-                        verify_tls=True,
-                    )
-                    runtime_config.validate(require_credentials=True)
-                    runtime_client = GPExeClient(runtime_config)
-                    with st.spinner("Sincronizzazione anagrafiche GPExe in corso..."):
-                        snapshot = sync_reference_data(runtime_client)
-                        snapshot_path = SnapshotStore.default().save(snapshot)
-                        database_result = PASConnectDatabase.default().replace_reference_data(snapshot)
-                    st.session_state["pas_gpexe_last_snapshot"] = snapshot
-                    st.session_state["pas_gpexe_last_snapshot_path"] = str(snapshot_path)
-                    st.session_state["pas_gpexe_last_database_path"] = str(database_result.database_path)
-                    st.success(
-                        "Sincronizzazione completata nel database PAS Connect: "
-                        f"{database_result.counts['teams']} team, "
-                        f"{database_result.counts['categories']} categorie, "
-                        f"{database_result.counts['tags']} tag e "
-                        f"{database_result.counts['athletes']} atleti."
-                    )
-                except Exception as exc:
-                    st.error(f"Sincronizzazione GPExe non riuscita: {exc}")
-
-            try:
-                reference_database = PASConnectDatabase.default()
-                database_counts = reference_database.counts()
-                last_database_sync = reference_database.last_successful_sync()
-            except Exception:
-                database_counts = {"teams": 0, "categories": 0, "tags": 0, "athletes": 0}
-                last_database_sync = None
-            if any(database_counts.values()):
-                sync_time = ""
-                if isinstance(last_database_sync, dict):
-                    sync_time = str(last_database_sync.get("completed_at") or "")
-                st.caption(
-                    "Database PAS Connect: "
-                    f"{database_counts.get('teams', 0)} team · "
-                    f"{database_counts.get('categories', 0)} categorie · "
-                    f"{database_counts.get('tags', 0)} tag · "
-                    f"{database_counts.get('athletes', 0)} atleti"
-                    + (f" · ultima sincronizzazione {sync_time}" if sync_time else "")
+                latest_run_rows = [
+                    row for row in sync_results
+                    if int(row["sync_run_id"]) == latest_run_id
+                ]
+                statuses = sorted({str(row["status"]) for row in latest_run_rows})
+                status_label = statuses[0] if len(statuses) == 1 else " / ".join(statuses)
+                readiness_label = (
+                    "READY"
+                    if latest_run_rows
+                    and all(row["readiness"] == "READY" for row in latest_run_rows)
+                    else "INCOMPLETE"
                 )
+                with pas_connect_main:
+                    st.markdown("##### Ultimo sync")
+                    summary_columns = st.columns(6)
+                    summary_columns[0].metric("Status", status_label)
+                    summary_columns[1].metric("Readiness", readiness_label)
+                    summary_columns[2].metric("TeamSession", len(latest_run_rows))
+                    summary_columns[3].metric(
+                        "AthleteSession",
+                        sum(int(row["athlete_sessions_count"]) for row in latest_run_rows),
+                    )
+                    summary_columns[4].metric(
+                        "Track", sum(int(row["tracks_count"]) for row in latest_run_rows)
+                    )
+                    summary_columns[5].metric(
+                        "KPI", sum(int(row["kpis_count"]) for row in latest_run_rows)
+                    )
+
+                with pas_connect_options:
+                    st.markdown("##### Ultimi sync")
+                    option_rows = [{
+                        "run": row["sync_run_id"],
+                        "TeamSession": row["provider_session_id"],
+                        "status": row["status"],
+                        "readiness": row["readiness"],
+                        "AthleteSession": row["athlete_sessions_count"],
+                        "Track": row["tracks_count"],
+                        "KPI": row["kpis_count"],
+                        "errore": row["error_message"],
+                    } for row in sync_results]
+                    st.dataframe(
+                        pd.DataFrame(option_rows), hide_index=True, use_container_width=True
+                    )
+                    retryable = [
+                        row for row in latest_run_rows
+                        if row["status"] in {"FAILED", "PARTIAL"}
+                    ]
+                    if retryable and selected_team:
+                        retry_session = st.selectbox(
+                            "TeamSession da ritentare",
+                            [int(row["provider_session_id"]) for row in retryable],
+                            key="pas_gpexe_retry_session_id",
+                        )
+                        retry_col1, retry_col2 = st.columns(2)
+                        retry_request = SyncRequest(
+                            team_id=int(selected_team.get("id")),
+                            season=str(selected_team.get("season") or "").strip(),
+                            mode="MANUAL",
+                            date_from=start_date.isoformat(),
+                            date_to=end_date.isoformat(),
+                        )
+                        with retry_col1:
+                            if st.button(
+                                "Riprova sessione",
+                                key="pas_gpexe_retry_one",
+                                use_container_width=True,
+                            ):
+                                retry_sync_session(
+                                    foundation_provider.services,
+                                    sync_database,
+                                    retry_request,
+                                    retry_session,
+                                    run_id=latest_run_id,
+                                )
+                                st.rerun()
+                        with retry_col2:
+                            if st.button(
+                                "Riprova tutti gli errori",
+                                key="pas_gpexe_retry_errors",
+                                use_container_width=True,
+                            ):
+                                retry_sync_errors(
+                                    foundation_provider.services,
+                                    sync_database,
+                                    retry_request,
+                                    run_id=latest_run_id,
+                                )
+                                st.rerun()
+
+                with pas_connect_advanced:
+                    st.markdown("##### Tracing C-01→C-05")
+                    diagnostic_rows = [{
+                        "run": row["sync_run_id"],
+                        "TeamSession": row["provider_session_id"],
+                        "operationName": row["operation_name"],
+                        "errore": row["error_message"],
+                        "C-01→C-05": row["diagnostics_json"],
+                    } for row in sync_results]
+                    st.dataframe(
+                        pd.DataFrame(diagnostic_rows),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+            else:
+                with pas_connect_main:
+                    st.info("Nessun risultato di sincronizzazione disponibile.")
+            with pas_connect_legacy:
+                st.markdown("##### Sincronizzazioni manuali")
+                st.caption("I comandi seguenti restano disponibili per diagnostica e recuperi mirati.")
+                st.markdown("##### Prima sincronizzazione")
                 st.caption(
-                    "Nota Streamlit Cloud: il database locale è isolato dall’Excel ma viene "
-                    "ricreato dopo reboot o nuovo deploy. La persistenza cloud sarà introdotta "
-                    "in una fase successiva."
+                    "Scarica Teams, Categories, Tags e Athletes e li salva nel database PAS Connect "
+                    "separato. Il database Excel e le analisi del PAS restano invariati."
                 )
-
-            st.divider()
-            st.markdown("##### Team Sessions")
-            st.caption(
-                "Scarica le Team Sessions GPExe nel database PAS Connect separato. "
-                "Dashboard, report e database Excel restano invariati."
-            )
-            if st.button(
-                "Sincronizza Team Sessions GPExe",
-                key="pas_gpexe_sync_team_sessions",
-                use_container_width=True,
-                disabled=True,
-            ):
-                try:
-                    runtime_config = GPExeConfig(
-                        base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
-                        token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
-                        timeout_seconds=60.0,
-                        verify_tls=True,
-                    )
-                    runtime_config.validate(require_credentials=True)
-                    runtime_client = GPExeClient(runtime_config)
-                    session_database = PASConnectDatabase.default()
-                    updated_since = session_database.latest_team_session_updated_at()
-                    with st.spinner("Sincronizzazione Team Sessions GPExe in corso..."):
-                        session_payload = sync_team_sessions(
-                            runtime_client, updated_since=updated_since
-                        )
-                        session_result = session_database.upsert_team_sessions(session_payload)
-                    st.success(
-                        "Team Sessions sincronizzate: "
-                        f"{session_result.received} ricevute · "
-                        f"{session_result.inserted} nuove · "
-                        f"{session_result.updated} aggiornate."
-                    )
-                except Exception as exc:
-                    st.error(f"Sincronizzazione Team Sessions non riuscita: {exc}")
-
-            try:
-                session_database = PASConnectDatabase.default()
-                stored_sessions = session_database.team_session_count()
-                last_session_sync = session_database.last_team_session_sync()
-            except Exception:
-                stored_sessions = 0
-                last_session_sync = None
-            if stored_sessions:
-                details = ""
-                if isinstance(last_session_sync, dict):
-                    details = (
-                        f" · ultima sync {last_session_sync.get('completed_at', '')}"
-                        f" · nuove {last_session_sync.get('inserted_count', 0)}"
-                        f" · aggiornate {last_session_sync.get('updated_count', 0)}"
-                    )
-                st.caption(f"Team Sessions nel database PAS Connect: {stored_sessions}{details}")
-
-
-            st.divider()
-            st.markdown("##### Dettaglio Team Sessions")
-            st.caption(
-                "Scarica header, stato, timing, metriche dinamiche e righe atleta per le Team Sessions "
-                "già presenti nel database PAS Connect. Excel e analisi restano invariati."
-            )
-            if st.button(
-                "Sincronizza dettagli Team Sessions GPExe",
-                key="pas_gpexe_sync_team_session_details",
-                use_container_width=True,
-                disabled=True,
-            ):
-                try:
-                    runtime_config = GPExeConfig(
-                        base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
-                        token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
-                        timeout_seconds=90.0,
-                        verify_tls=True,
-                    )
-                    runtime_config.validate(require_credentials=True)
-                    runtime_client = GPExeClient(runtime_config)
-                    detail_database = PASConnectDatabase.default()
-                    session_ids = detail_database.team_session_ids_for_detail_sync(only_missing=True)
-                    if not session_ids:
-                        st.info("Nessuna Team Session senza dettaglio da sincronizzare.")
-                    else:
-                        with st.spinner(f"Sincronizzazione dettaglio di {len(session_ids)} Team Sessions..."):
-                            detail_payload = sync_team_session_details(runtime_client, session_ids)
-                            detail_result = detail_database.upsert_team_session_details(detail_payload)
-                        st.success(
-                            "Dettagli Team Sessions sincronizzati: "
-                            f"{detail_result.received} sessioni · "
-                            f"{detail_result.inserted} nuove · "
-                            f"{detail_result.updated} aggiornate · "
-                            f"{detail_result.athlete_rows} righe atleta · "
-                            f"{detail_result.metric_headers} intestazioni metriche"
-                            + (f" · {detail_result.failed} errori" if detail_result.failed else "")
-                        )
-                except Exception as exc:
-                    st.error(f"Sincronizzazione dettagli Team Sessions non riuscita: {exc}")
-
-            try:
-                detail_database = PASConnectDatabase.default()
-                stored_details = detail_database.team_session_detail_count()
-                last_detail_sync = detail_database.last_team_session_detail_sync()
-            except Exception:
-                stored_details = 0
-                last_detail_sync = None
-            if stored_details:
-                detail_text = ""
-                if isinstance(last_detail_sync, dict):
-                    detail_text = (
-                        f" · ultima sync {last_detail_sync.get('completed_at', '')}"
-                        f" · errori {last_detail_sync.get('failed_count', 0)}"
-                    )
-                st.caption(f"Dettagli Team Sessions nel database PAS Connect: {stored_details}{detail_text}")
-
-            st.divider()
-            st.markdown("##### Athlete Sessions")
-            st.caption(
-                "Scarica il dettaglio individuale delle Athlete Sessions già collegate alle Team Sessions. "
-                "I dati restano nel database PAS Connect separato; Excel e analisi non cambiano."
-            )
-            if st.button(
-                "Sincronizza Athlete Sessions GPExe",
-                key="pas_gpexe_sync_athlete_session_details",
-                use_container_width=True,
-                disabled=True,
-            ):
-                try:
-                    runtime_config = GPExeConfig(
-                        base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
-                        token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
-                        timeout_seconds=120.0,
-                        verify_tls=True,
-                    )
-                    runtime_config.validate(require_credentials=True)
-                    runtime_client = GPExeClient(runtime_config)
-                    athlete_database = PASConnectDatabase.default()
-                    athlete_refs = athlete_database.athlete_session_refs_for_detail_sync(only_missing=True)
-                    if not athlete_refs:
-                        st.info("Nessuna Athlete Session senza dettaglio da sincronizzare.")
-                    else:
-                        with st.spinner(f"Sincronizzazione di {len(athlete_refs)} Athlete Sessions..."):
-                            athlete_payload = sync_athlete_session_details(runtime_client, athlete_refs)
-                            athlete_result = athlete_database.upsert_athlete_session_details(athlete_payload)
-                        st.success(
-                            "Athlete Sessions sincronizzate: "
-                            f"{athlete_result.received} ricevute · "
-                            f"{athlete_result.inserted} nuove · "
-                            f"{athlete_result.updated} aggiornate"
-                            + (f" · {athlete_result.failed} errori" if athlete_result.failed else "")
-                        )
-                except Exception as exc:
-                    st.error(f"Sincronizzazione Athlete Sessions non riuscita: {exc}")
-
-            try:
-                athlete_database = PASConnectDatabase.default()
-                stored_athlete_details = athlete_database.athlete_session_detail_count()
-                last_athlete_sync = athlete_database.last_athlete_session_detail_sync()
-            except Exception:
-                stored_athlete_details = 0
-                last_athlete_sync = None
-            if stored_athlete_details:
-                athlete_text = ""
-                if isinstance(last_athlete_sync, dict):
-                    athlete_text = (
-                        f" · ultima sync {last_athlete_sync.get('completed_at', '')}"
-                        f" · errori {last_athlete_sync.get('failed_count', 0)}"
-                    )
-                st.caption(
-                    f"Athlete Sessions nel database PAS Connect: {stored_athlete_details}{athlete_text}"
-                )
-
-            if st.button(
-                "Disconnetti GPExe",
-                key="pas_gpexe_disconnect",
-                use_container_width=True,
-            ):
-                for state_key in (
-                    "pas_gpexe_runtime_token",
-                    "pas_gpexe_runtime_refresh_token",
-                    "pas_gpexe_connected",
-                    "pas_gpexe_connected_base_url",
-                    "pas_gpexe_team_count",
-                    "pas_gpexe_connected_at",
+                if st.button(
+                    "Sincronizza anagrafiche GPExe",
+                    key="pas_gpexe_sync_reference",
+                    use_container_width=True,
+                    disabled=True,
                 ):
-                    st.session_state.pop(state_key, None)
-                st.rerun()
+                    try:
+                        runtime_config = GPExeConfig(
+                            base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                            token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                            timeout_seconds=30.0,
+                            verify_tls=True,
+                        )
+                        runtime_config.validate(require_credentials=True)
+                        runtime_client = GPExeClient(runtime_config)
+                        with st.spinner("Sincronizzazione anagrafiche GPExe in corso..."):
+                            snapshot = sync_reference_data(runtime_client)
+                            snapshot_path = SnapshotStore.default().save(snapshot)
+                            database_result = PASConnectDatabase.default().replace_reference_data(snapshot)
+                        st.session_state["pas_gpexe_last_snapshot"] = snapshot
+                        st.session_state["pas_gpexe_last_snapshot_path"] = str(snapshot_path)
+                        st.session_state["pas_gpexe_last_database_path"] = str(database_result.database_path)
+                        st.success(
+                            "Sincronizzazione completata nel database PAS Connect: "
+                            f"{database_result.counts['teams']} team, "
+                            f"{database_result.counts['categories']} categorie, "
+                            f"{database_result.counts['tags']} tag e "
+                            f"{database_result.counts['athletes']} atleti."
+                        )
+                    except Exception as exc:
+                        st.error(f"Sincronizzazione GPExe non riuscita: {exc}")
 
-        with st.expander("Configurazione Streamlit Secrets", expanded=False):
+                try:
+                    reference_database = PASConnectDatabase.default()
+                    database_counts = reference_database.counts()
+                    last_database_sync = reference_database.last_successful_sync()
+                except Exception:
+                    database_counts = {"teams": 0, "categories": 0, "tags": 0, "athletes": 0}
+                    last_database_sync = None
+                if any(database_counts.values()):
+                    sync_time = ""
+                    if isinstance(last_database_sync, dict):
+                        sync_time = str(last_database_sync.get("completed_at") or "")
+                    st.caption(
+                        "Database PAS Connect: "
+                        f"{database_counts.get('teams', 0)} team · "
+                        f"{database_counts.get('categories', 0)} categorie · "
+                        f"{database_counts.get('tags', 0)} tag · "
+                        f"{database_counts.get('athletes', 0)} atleti"
+                        + (f" · ultima sincronizzazione {sync_time}" if sync_time else "")
+                    )
+                    st.caption(
+                        "Nota Streamlit Cloud: il database locale è isolato dall’Excel ma viene "
+                        "ricreato dopo reboot o nuovo deploy. La persistenza cloud sarà introdotta "
+                        "in una fase successiva."
+                    )
+
+                st.divider()
+                st.markdown("##### Team Sessions")
+                st.caption(
+                    "Scarica le Team Sessions GPExe nel database PAS Connect separato. "
+                    "Dashboard, report e database Excel restano invariati."
+                )
+                if st.button(
+                    "Sincronizza Team Sessions GPExe",
+                    key="pas_gpexe_sync_team_sessions",
+                    use_container_width=True,
+                    disabled=True,
+                ):
+                    try:
+                        runtime_config = GPExeConfig(
+                            base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                            token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                            timeout_seconds=60.0,
+                            verify_tls=True,
+                        )
+                        runtime_config.validate(require_credentials=True)
+                        runtime_client = GPExeClient(runtime_config)
+                        session_database = PASConnectDatabase.default()
+                        updated_since = session_database.latest_team_session_updated_at()
+                        with st.spinner("Sincronizzazione Team Sessions GPExe in corso..."):
+                            session_payload = sync_team_sessions(
+                                runtime_client, updated_since=updated_since
+                            )
+                            session_result = session_database.upsert_team_sessions(session_payload)
+                        st.success(
+                            "Team Sessions sincronizzate: "
+                            f"{session_result.received} ricevute · "
+                            f"{session_result.inserted} nuove · "
+                            f"{session_result.updated} aggiornate."
+                        )
+                    except Exception as exc:
+                        st.error(f"Sincronizzazione Team Sessions non riuscita: {exc}")
+
+                try:
+                    session_database = PASConnectDatabase.default()
+                    stored_sessions = session_database.team_session_count()
+                    last_session_sync = session_database.last_team_session_sync()
+                except Exception:
+                    stored_sessions = 0
+                    last_session_sync = None
+                if stored_sessions:
+                    details = ""
+                    if isinstance(last_session_sync, dict):
+                        details = (
+                            f" · ultima sync {last_session_sync.get('completed_at', '')}"
+                            f" · nuove {last_session_sync.get('inserted_count', 0)}"
+                            f" · aggiornate {last_session_sync.get('updated_count', 0)}"
+                        )
+                    st.caption(f"Team Sessions nel database PAS Connect: {stored_sessions}{details}")
+
+
+                st.divider()
+                st.markdown("##### Dettaglio Team Sessions")
+                st.caption(
+                    "Scarica header, stato, timing, metriche dinamiche e righe atleta per le Team Sessions "
+                    "già presenti nel database PAS Connect. Excel e analisi restano invariati."
+                )
+                if st.button(
+                    "Sincronizza dettagli Team Sessions GPExe",
+                    key="pas_gpexe_sync_team_session_details",
+                    use_container_width=True,
+                    disabled=True,
+                ):
+                    try:
+                        runtime_config = GPExeConfig(
+                            base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                            token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                            timeout_seconds=90.0,
+                            verify_tls=True,
+                        )
+                        runtime_config.validate(require_credentials=True)
+                        runtime_client = GPExeClient(runtime_config)
+                        detail_database = PASConnectDatabase.default()
+                        session_ids = detail_database.team_session_ids_for_detail_sync(only_missing=True)
+                        if not session_ids:
+                            st.info("Nessuna Team Session senza dettaglio da sincronizzare.")
+                        else:
+                            with st.spinner(f"Sincronizzazione dettaglio di {len(session_ids)} Team Sessions..."):
+                                detail_payload = sync_team_session_details(runtime_client, session_ids)
+                                detail_result = detail_database.upsert_team_session_details(detail_payload)
+                            st.success(
+                                "Dettagli Team Sessions sincronizzati: "
+                                f"{detail_result.received} sessioni · "
+                                f"{detail_result.inserted} nuove · "
+                                f"{detail_result.updated} aggiornate · "
+                                f"{detail_result.athlete_rows} righe atleta · "
+                                f"{detail_result.metric_headers} intestazioni metriche"
+                                + (f" · {detail_result.failed} errori" if detail_result.failed else "")
+                            )
+                    except Exception as exc:
+                        st.error(f"Sincronizzazione dettagli Team Sessions non riuscita: {exc}")
+
+                try:
+                    detail_database = PASConnectDatabase.default()
+                    stored_details = detail_database.team_session_detail_count()
+                    last_detail_sync = detail_database.last_team_session_detail_sync()
+                except Exception:
+                    stored_details = 0
+                    last_detail_sync = None
+                if stored_details:
+                    detail_text = ""
+                    if isinstance(last_detail_sync, dict):
+                        detail_text = (
+                            f" · ultima sync {last_detail_sync.get('completed_at', '')}"
+                            f" · errori {last_detail_sync.get('failed_count', 0)}"
+                        )
+                    st.caption(f"Dettagli Team Sessions nel database PAS Connect: {stored_details}{detail_text}")
+
+                st.divider()
+                st.markdown("##### Athlete Sessions")
+                st.caption(
+                    "Scarica il dettaglio individuale delle Athlete Sessions già collegate alle Team Sessions. "
+                    "I dati restano nel database PAS Connect separato; Excel e analisi non cambiano."
+                )
+                if st.button(
+                    "Sincronizza Athlete Sessions GPExe",
+                    key="pas_gpexe_sync_athlete_session_details",
+                    use_container_width=True,
+                    disabled=True,
+                ):
+                    try:
+                        runtime_config = GPExeConfig(
+                            base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
+                            token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
+                            timeout_seconds=120.0,
+                            verify_tls=True,
+                        )
+                        runtime_config.validate(require_credentials=True)
+                        runtime_client = GPExeClient(runtime_config)
+                        athlete_database = PASConnectDatabase.default()
+                        athlete_refs = athlete_database.athlete_session_refs_for_detail_sync(only_missing=True)
+                        if not athlete_refs:
+                            st.info("Nessuna Athlete Session senza dettaglio da sincronizzare.")
+                        else:
+                            with st.spinner(f"Sincronizzazione di {len(athlete_refs)} Athlete Sessions..."):
+                                athlete_payload = sync_athlete_session_details(runtime_client, athlete_refs)
+                                athlete_result = athlete_database.upsert_athlete_session_details(athlete_payload)
+                            st.success(
+                                "Athlete Sessions sincronizzate: "
+                                f"{athlete_result.received} ricevute · "
+                                f"{athlete_result.inserted} nuove · "
+                                f"{athlete_result.updated} aggiornate"
+                                + (f" · {athlete_result.failed} errori" if athlete_result.failed else "")
+                            )
+                    except Exception as exc:
+                        st.error(f"Sincronizzazione Athlete Sessions non riuscita: {exc}")
+
+                try:
+                    athlete_database = PASConnectDatabase.default()
+                    stored_athlete_details = athlete_database.athlete_session_detail_count()
+                    last_athlete_sync = athlete_database.last_athlete_session_detail_sync()
+                except Exception:
+                    stored_athlete_details = 0
+                    last_athlete_sync = None
+                if stored_athlete_details:
+                    athlete_text = ""
+                    if isinstance(last_athlete_sync, dict):
+                        athlete_text = (
+                            f" · ultima sync {last_athlete_sync.get('completed_at', '')}"
+                            f" · errori {last_athlete_sync.get('failed_count', 0)}"
+                        )
+                    st.caption(
+                        f"Athlete Sessions nel database PAS Connect: {stored_athlete_details}{athlete_text}"
+                    )
+
+            with pas_connect_main:
+                if st.button(
+                    "Disconnetti GPExe",
+                    key="pas_gpexe_disconnect",
+                    use_container_width=True,
+                ):
+                    for state_key in (
+                        "pas_gpexe_runtime_token",
+                        "pas_gpexe_runtime_refresh_token",
+                        "pas_gpexe_connected",
+                        "pas_gpexe_connected_base_url",
+                        "pas_gpexe_team_count",
+                        "pas_gpexe_connected_at",
+                    ):
+                        st.session_state.pop(state_key, None)
+                    st.rerun()
+
+        with pas_connect_advanced:
+            st.markdown("##### Configurazione Streamlit Secrets")
             st.code(
                 '[gpexe]\n'
                 'base_url = "https://e15.gpexe.com/ui/v2/"\n'

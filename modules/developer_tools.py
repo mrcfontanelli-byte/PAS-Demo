@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from contextlib import nullcontext
 from typing import Any
 
 import pandas as pd
@@ -17,8 +18,10 @@ from pas_connect.pas_bridge import available_sessions
 
 def render_developer_tools(
     *, selected_provider: str, active_frame: Any, excel_source: Any, database_path: str | Path,
+    embedded: bool = False,
 ) -> None:
-    with st.expander("Developer Tools", expanded=False):
+    context = nullcontext() if embedded else st.expander("Developer Tools", expanded=False)
+    with context:
         pilot_tab, validation_tab, coverage_tab = st.tabs(
             ["Distance Pilot", "Bridge Validation", "Copertura Panoramica"]
         )

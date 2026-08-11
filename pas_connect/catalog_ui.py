@@ -24,7 +24,9 @@ def _catalog_frame(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(rows).reindex(columns=columns)
 
 
-def render_metric_catalog_section(database: PASConnectDatabase) -> None:
+def render_metric_catalog_section(
+    database: PASConnectDatabase, *, embedded: bool = False
+) -> None:
     st.markdown("##### Catalogo metriche PAS")
     st.caption(
         "Il catalogo descrive le metriche disponibili e i mapping provider. "
@@ -46,7 +48,14 @@ def render_metric_catalog_section(database: PASConnectDatabase) -> None:
     metric_cols[3].metric("Provider catalogati", len({row.get("provider") for row in performance}))
     st.caption(provider_counts or "Nessun mapping provider salvato.")
 
-    with st.expander("Importa intestazioni template CSV", expanded=not rows):
+    import_panel = (
+        st.container(border=True)
+        if embedded
+        else st.expander("Importa intestazioni template CSV", expanded=not rows)
+    )
+    with import_panel:
+        if embedded:
+            st.markdown("###### Importa intestazioni template CSV")
         template = st.file_uploader(
             "Template CSV", type=["csv"], key="pas_metric_catalog_template",
             help="Viene letta esclusivamente la riga delle intestazioni; le righe dati non sono importate.",
