@@ -62,8 +62,8 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS, format_metric_threshold
-from pas_connect.pas_bridge import available_sessions, has_compatible_performance_rows
+from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, retry_sync_session, retry_sync_errors, SyncRequest, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS, format_metric_threshold
+from pas_connect.pas_bridge import available_sessions, available_contexts, available_athletes, has_compatible_performance_rows
 from pas_connect.mapper import map_team_session, map_graphql_athlete, map_graphql_athlete_session
 from pas_connect.endpoints import TEAMS
 from pas_connect.catalog_ui import render_metric_catalog_section
@@ -3053,7 +3053,26 @@ with settings_column:
                 help="La modalità API usa esclusivamente dati già presenti nel database PAS Connect locale.",
             )
             api_database_path = PASConnectDatabase.default(base_dir).path
-            api_sessions = available_sessions(api_database_path)
+            api_contexts = available_contexts(api_database_path)
+            selected_local_team = None
+            selected_local_season = None
+            if api_contexts:
+                context_labels = [f"Team {item['team_id']} · {item['season']}" for item in api_contexts]
+                context_index = st.selectbox(
+                    "Contesto GPExe locale", range(len(api_contexts)),
+                    format_func=lambda index: context_labels[index], key="pas_gpexe_local_context_index",
+                )
+                selected_local_team = int(api_contexts[context_index]["team_id"])
+                selected_local_season = str(api_contexts[context_index]["season"])
+                st.session_state["pas_gpexe_context_athletes"] = available_athletes(
+                    api_database_path,
+                    team_id=selected_local_team,
+                    season=selected_local_season,
+                )
+            api_sessions = available_sessions(
+                api_database_path, team_id=selected_local_team,
+                season=selected_local_season, ready_only=bool(api_contexts),
+            )
             if st.session_state.get("pas_gpexe_input_mode") == "API sincronizzata":
                 if api_sessions:
                     session_by_id = {int(item["provider_session_id"]): item for item in api_sessions}
@@ -3071,7 +3090,7 @@ with settings_column:
                         help="Senza selezione vengono utilizzate tutte le TeamSession già memorizzate localmente.",
                     )
                     st.success(
-                        f"Dati GPExe locali disponibili: {len(api_sessions)} TeamSession · "
+                        f"Dati GPExe READY disponibili: {len(api_sessions)} TeamSession · "
                         f"{len(selected_ids) or len(api_sessions)} selezionate."
                     )
                 else:
@@ -3625,15 +3644,15 @@ with settings_column:
             st.divider()
             st.markdown("##### Sincronizzazione completa")
             st.caption(
-                "Esegue in ordine anagrafiche, Team Sessions, dettagli Team Sessions e Athlete Sessions. "
-                "Excel resta la sorgente operativa e non viene modificato."
+                "Orchestrazione esclusivamente GraphQL per TeamSession, AthleteSession, Track e KPI. "
+                "Ogni TeamSession viene pubblicata atomicamente; Excel non viene consultato né modificato."
             )
             if st.button(
                 "🚀 Sincronizzazione completa GPExe",
                 key="pas_gpexe_full_sync",
                 use_container_width=True,
                 type="primary",
-                disabled=True,
+                disabled=not bool(selected_team),
             ):
                 try:
                     runtime_config = GPExeConfig(
@@ -3643,7 +3662,7 @@ with settings_column:
                         verify_tls=True,
                     )
                     runtime_config.validate(require_credentials=True)
-                    runtime_client = GPExeClient(runtime_config)
+                    runtime_services = GPExeServices(GPExeClient(runtime_config))
                     full_database = PASConnectDatabase.default()
                     progress_bar = st.progress(0, text="Preparazione sincronizzazione...")
                     log_box = st.empty()
@@ -3656,26 +3675,73 @@ with settings_column:
                         sync_log.append(f"{event.step}: {event.status} · {event.message}")
                         log_box.code("\n".join(sync_log[-12:]), language=None)
 
+                    sync_request = SyncRequest(
+                        team_id=int(selected_team.get("id")),
+                        season=str(selected_team.get("season") or "").strip(),
+                        mode="MANUAL", date_from=start_date.isoformat(), date_to=end_date.isoformat(),
+                        selected_session_ids=tuple(sorted(int(item) for item in selected_ids)),
+                    )
                     full_result = run_full_sync(
-                        runtime_client, full_database, progress=_full_sync_progress
+                        runtime_services, full_database, progress=_full_sync_progress,
+                        request=sync_request,
                     )
                     progress_bar.progress(100, text="Sincronizzazione completa terminata")
                     st.session_state["pas_gpexe_last_full_sync"] = full_result
-                    ref_counts = full_result["steps"]["reference"]["counts"]
-                    ses = full_result["steps"]["team_sessions"]
-                    det = full_result["steps"]["team_session_details"]
-                    ath = full_result["steps"]["athlete_sessions"]
-                    tracks = full_result["steps"].get("tracks", {})
                     st.success(
-                        "Sincronizzazione completa: "
-                        f"{ref_counts.get('athletes', 0)} atleti · "
-                        f"{ses.get('received', 0)} Team Sessions · "
-                        f"{det.get('received', 0)} dettagli sessione · "
-                        f"{ath.get('received', 0)} Athlete Sessions · "
-                        f"{tracks.get('received', 0)} Tracks."
+                        f"Sync GraphQL {full_result.status}: "
+                        f"{full_result.counts['success_count']} SUCCESS · "
+                        f"{full_result.counts['partial_count']} PARTIAL · "
+                        f"{full_result.counts['failed_count']} FAILED · "
+                        f"{full_result.counts['skipped_count']} SKIPPED."
                     )
                 except Exception as exc:
                     st.error(f"Sincronizzazione completa GPExe non riuscita: {exc}")
+
+            sync_database = PASConnectDatabase.default()
+            sync_results = sync_database.list_session_sync_results(
+                team_id=int(selected_team.get("id")) if selected_team else None,
+            )
+            if sync_results:
+                st.markdown("###### Diagnostica Sync (sola lettura)")
+                diagnostic_rows = [{
+                    "run": row["sync_run_id"], "TeamSession": row["provider_session_id"],
+                    "status": row["status"], "readiness": row["readiness"],
+                    "AthleteSession": row["athlete_sessions_count"],
+                    "Track": row["tracks_count"], "KPI": row["kpis_count"],
+                    "operationName": row["operation_name"], "errore": row["error_message"],
+                    "C-01→C-05": row["diagnostics_json"],
+                } for row in sync_results]
+                st.dataframe(pd.DataFrame(diagnostic_rows), hide_index=True, use_container_width=True)
+                latest_run_id = int(sync_results[0]["sync_run_id"])
+                retryable = [row for row in sync_results
+                             if int(row["sync_run_id"]) == latest_run_id
+                             and row["status"] in {"FAILED", "PARTIAL"}]
+                if retryable and selected_team:
+                    retry_session = st.selectbox(
+                        "TeamSession da ritentare",
+                        [int(row["provider_session_id"]) for row in retryable],
+                        key="pas_gpexe_retry_session_id",
+                    )
+                    retry_col1, retry_col2 = st.columns(2)
+                    retry_request = SyncRequest(
+                        team_id=int(selected_team.get("id")),
+                        season=str(selected_team.get("season") or "").strip(),
+                        mode="MANUAL", date_from=start_date.isoformat(), date_to=end_date.isoformat(),
+                    )
+                    with retry_col1:
+                        if st.button("Riprova sessione", key="pas_gpexe_retry_one", use_container_width=True):
+                            retry_sync_session(
+                                foundation_provider.services, sync_database, retry_request,
+                                retry_session, run_id=latest_run_id,
+                            )
+                            st.rerun()
+                    with retry_col2:
+                        if st.button("Riprova tutti gli errori", key="pas_gpexe_retry_errors", use_container_width=True):
+                            retry_sync_errors(
+                                foundation_provider.services, sync_database, retry_request,
+                                run_id=latest_run_id,
+                            )
+                            st.rerun()
 
             st.divider()
             st.markdown("##### Sincronizzazioni manuali")

@@ -1,3 +1,13 @@
+## PAS v4.13.0 — GPExe Sync Reliability & Multi-Team Foundation
+
+PAS Connect dispone ora di un orchestratore esclusivamente GraphQL per la catena TeamSession → AthleteSession → Track → KPI. Ogni TeamSession viene validata, tracciata nei checkpoint redatti C-01…C-05 e pubblicata con una singola transazione; un refresh incompleto o fallito non sostituisce l'ultimo bundle READY. Import ripetuti senza `force refresh` sono `SKIPPED`, mentre retry singolo e retry degli errori operano solo sulle sessioni richieste.
+
+Lo schema PAS Connect 12 aggiunge lo storico per sessione con stati `SUCCESS`, `PARTIAL`, `FAILED`, `SKIPPED` e readiness `READY` / `INCOMPLETE`. La relazione additiva atleta–Team–stagione mantiene `gpexe_athletes` come anagrafica provider e consente allo stesso `provider_player_id` di appartenere a più Team e stagioni senza riscrivere il campo Team legacy. Il contesto locale GPExe usa Team, stagione, date, TeamSession e athlete ID provenienti esclusivamente da PAS Connect; il roster Excel non filtra il percorso GPExe. Excel resta sorgente predefinita e non viene modificato.
+
+La validazione live finale ha usato Team 543, stagione 2026/2027, data 31/07/2026 e TeamSession 143261. Per questa sessione i resolver GPExe `identifierKpi` e `kpi` restituiscono lato provider `Field 'id' expected a number but got ''` per tutte le 27 AthleteSession. PAS ripete quindi il recupero omettendo esclusivamente i due resolver KPI e pubblica atomicamente 27 AthleteSession e 27 Track come `PARTIAL / INCOMPLETE`, con KPI pari a zero e diagnostica esplicita `provider KPI error`. Non vengono inventati KPI e non viene eseguito alcun fallback a Excel.
+
+Questa release non introduce routing multi-provider completo, registri canonici Team/Athlete, nuove famiglie di profili, persistenza cloud esterna o migrazioni di Drills, Match, Forecast e Report.
+
 ## PAS v4.10.0 — Metric Usage Registry Foundation
 
 PAS Connect introduce il **Metric Usage Registry**, separato dal Catalogo metriche e dai profili Team/stagione. Il registry descrive modulo, vista e tipo di utilizzo di ogni metrica, con validazione `VERIFIED` / `PROBABLE` / `AMBIGUOUS` / `MANUAL`, stato enabled/required, ordine e note, senza cambiare il comportamento delle viste esistenti.

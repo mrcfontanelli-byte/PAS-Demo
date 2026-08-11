@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .client import GPExeClient
 from .exceptions import APIRequestError
@@ -181,6 +181,29 @@ TEAM_SESSION_ATHLETESESSION_QUERY = """query TeamSessionAthletesession(
   }
 }"""
 
+TEAM_SESSION_ATHLETESESSION_NO_KPI_QUERY = """query TeamSessionAthletesessionNoKpi(
+  $id: ID!
+  $templateId: ID = null
+  $drill: ID = null
+  $fieldsLimit: Int
+) {
+  res: teamSession(id: $id, drill: $drill, templateId: $templateId, fieldsLimit: $fieldsLimit) {
+    id drill team { id __typename }
+    athleteSessions {
+      id masterAthleteSession drill state isStatsValid starter
+      track { id hasCardio athlete { id name lastName firstName __typename } __typename }
+      totalTime { value uom unit __typename }
+      athlete {
+        id lastName firstName name shortName role
+        playerSet { number team { id __typename } __typename }
+        __typename
+      }
+      __typename
+    }
+    __typename
+  }
+}"""
+
 
 def normalize_team_session_athlete_session_variables(
     *,
@@ -346,6 +369,7 @@ class GPExeServices:
     def team_session_athlete_sessions(
         self, *, team_session_id: object, template_id: object | None = None,
         drill: object | None = None, fields_limit: object | None = None,
+        trace: Callable[[str, Mapping[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         variables = normalize_team_session_athlete_session_variables(
             team_session_id=team_session_id,
@@ -353,15 +377,67 @@ class GPExeServices:
             drill=drill,
             fields_limit=fields_limit,
         )
-        response = self.client.graphql(
-            TEAM_SESSION_ATHLETESESSION_QUERY,
-            variables=variables,
-            operation_name="TeamSessionAthletesession",
-        )
+        if trace:
+            trace("C-03", {"operationName": "TeamSessionAthletesession", "variables": variables})
+            trace("C-04", {"operationName": "TeamSessionAthletesession", "variables": variables})
+        try:
+            response = self.client.graphql(
+                TEAM_SESSION_ATHLETESESSION_QUERY,
+                variables=variables,
+                operation_name="TeamSessionAthletesession",
+            )
+        except Exception as exc:
+            if trace:
+                trace("C-05", {
+                    "status": "ERROR", "errorType": type(exc).__name__, "message": str(exc),
+                    "graphqlErrors": list(getattr(exc, "graphql_errors", ())),
+                })
+            raise
         data = response.get("data")
         result = data.get("res") if isinstance(data, Mapping) else None
         if not isinstance(result, Mapping):
             raise APIRequestError("La risposta TeamSessionAthletesession non contiene data.res.")
+        if trace:
+            trace("C-05", {"status": "SUCCESS", "hasDataRes": True})
+        return dict(result)
+
+    def team_session_athlete_sessions_without_kpis(
+        self, *, team_session_id: object, template_id: object | None = None,
+        drill: object | None = None, fields_limit: object | None = None,
+        trace: Callable[[str, Mapping[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        """Recupera il bundle strutturale dopo un errore confinato ai resolver KPI."""
+        variables = normalize_team_session_athlete_session_variables(
+            team_session_id=team_session_id,
+            template_id=template_id,
+            drill=drill,
+            fields_limit=fields_limit,
+        )
+        if trace:
+            trace("C-04-KPI-FALLBACK", {
+                "operationName": "TeamSessionAthletesessionNoKpi", "variables": variables,
+            })
+        try:
+            response = self.client.graphql(
+                TEAM_SESSION_ATHLETESESSION_NO_KPI_QUERY,
+                variables=variables,
+                operation_name="TeamSessionAthletesessionNoKpi",
+            )
+        except Exception as exc:
+            if trace:
+                trace("C-05-KPI-FALLBACK", {
+                    "status": "ERROR", "errorType": type(exc).__name__, "message": str(exc),
+                    "graphqlErrors": list(getattr(exc, "graphql_errors", ())),
+                })
+            raise
+        data = response.get("data")
+        result = data.get("res") if isinstance(data, Mapping) else None
+        if not isinstance(result, Mapping):
+            raise APIRequestError(
+                "La risposta TeamSessionAthletesessionNoKpi non contiene data.res."
+            )
+        if trace:
+            trace("C-05-KPI-FALLBACK", {"status": "SUCCESS", "hasDataRes": True})
         return dict(result)
 
     def categories(self, **query: object) -> list[dict[str, Any]]:

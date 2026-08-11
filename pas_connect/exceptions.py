@@ -16,6 +16,10 @@ class AuthenticationError(PASConnectError):
 class APIRequestError(PASConnectError):
     """Richiesta API fallita o risposta non valida."""
 
+    def __init__(self, message: str, *, graphql_errors: tuple[dict, ...] = ()) -> None:
+        super().__init__(message)
+        self.graphql_errors = graphql_errors
+
 
 class MappingError(PASConnectError):
     """Dato del provider non convertibile nello schema PAS."""

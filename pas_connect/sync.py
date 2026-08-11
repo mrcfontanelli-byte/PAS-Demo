@@ -1,14 +1,17 @@
 """Piano e prima sincronizzazione anagrafica GPExe -> snapshot PAS."""
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta, timezone
 from enum import Enum
+import re
 from typing import Any, Callable, Mapping
 
 from .client import GPExeClient
 from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, TEAM_SESSIONS, TEAM_SESSION_DETAIL, ATHLETE_SESSION_DETAIL, TRACKS, Endpoint
-from .mapper import map_athlete, map_category, map_many, map_tag, map_team, map_team_session, map_team_session_detail, map_athlete_session_detail
+from .mapper import map_athlete, map_category, map_many, map_tag, map_team, map_team_session, map_team_session_detail, map_athlete_session_detail, map_graphql_athlete, map_graphql_athlete_session
+from .services import GPExeServices
+from .exceptions import APIRequestError
 
 
 class SyncResource(str, Enum):
@@ -53,6 +56,275 @@ def build_default_sync_plan() -> SyncPlan:
     )
     plan.validate()
     return plan
+
+
+SYNC_MODES = {"MANUAL", "QUICK", "FROM_LAST_SESSION"}
+
+
+@dataclass(frozen=True)
+class SyncRequest:
+    team_id: int
+    season: str
+    mode: str = "MANUAL"
+    date_from: str | None = None
+    date_to: str | None = None
+    selected_session_ids: tuple[int, ...] = ()
+    force_refresh: bool = False
+    retry_of_run_id: int | None = None
+
+    def validate(self) -> "SyncRequest":
+        if int(self.team_id) <= 0:
+            raise ValueError("Team ID obbligatorio e positivo.")
+        if not str(self.season).strip():
+            raise ValueError("Stagione obbligatoria.")
+        if self.mode not in SYNC_MODES:
+            raise ValueError(f"Modalità sync non valida: {self.mode}")
+        if any(int(item) <= 0 for item in self.selected_session_ids):
+            raise ValueError("Gli ID TeamSession devono essere interi positivi e non vuoti.")
+        if self.date_from and self.date_to and self.date_from > self.date_to:
+            raise ValueError("Intervallo date non valido.")
+        if self.mode == "MANUAL" and not self.selected_session_ids and not (self.date_from and self.date_to):
+            raise ValueError("MANUAL richiede un intervallo o TeamSession esplicite.")
+        return self
+
+    def resolved_dates(self, latest_date: str | None = None) -> tuple[str, str]:
+        if self.date_from and self.date_to:
+            return self.date_from, self.date_to
+        today = date.today()
+        if self.mode == "QUICK":
+            return (today - timedelta(days=7)).isoformat(), today.isoformat()
+        if self.mode == "FROM_LAST_SESSION" and latest_date:
+            return latest_date[:10], today.isoformat()
+        if self.selected_session_ids:
+            return "1970-01-01", today.isoformat()
+        raise ValueError("Impossibile risolvere l'intervallo di sincronizzazione.")
+
+
+@dataclass(frozen=True)
+class SessionSyncResult:
+    provider_session_id: int
+    status: str
+    readiness: str
+    athlete_sessions_count: int = 0
+    tracks_count: int = 0
+    kpis_count: int = 0
+    error_message: str | None = None
+    diagnostics: tuple[dict[str, Any], ...] = ()
+
+
+@dataclass(frozen=True)
+class SyncRunResult:
+    sync_run_id: int
+    status: str
+    sessions: tuple[SessionSyncResult, ...]
+
+    @property
+    def counts(self) -> dict[str, int]:
+        return {name.lower() + "_count": sum(item.status == name for item in self.sessions)
+                for name in ("SUCCESS", "PARTIAL", "FAILED", "SKIPPED")}
+
+
+@dataclass(frozen=True)
+class SyncProgressEvent:
+    checkpoint: str
+    provider_session_id: int | None
+    detail: Mapping[str, Any]
+
+
+def _redacted_trace_message(message: str) -> str:
+    return re.sub(
+        r"(?i)\b(authorization|cookie|set-cookie|token|password)\s*[:=]\s*[^\s;,]+",
+        r"\1: [dato sensibile rimosso]", message,
+    )
+
+
+def _redacted_trace(
+    target: list[dict[str, Any]], checkpoint: str, detail: Mapping[str, Any],
+    *, session_id: int | None, progress: Callable[[SyncProgressEvent], None] | None,
+) -> None:
+    def redact(value: Any) -> Any:
+        if isinstance(value, Mapping):
+            return {key: redact(item) for key, item in value.items()
+                    if key.lower() not in {"authorization", "cookie", "token", "password"}}
+        if isinstance(value, (list, tuple)):
+            return [redact(item) for item in value]
+        if isinstance(value, str):
+            return re.sub(
+                r"(?i)\b(authorization|cookie|set-cookie|token|password)\s*[:=]\s*[^\s;,]+",
+                r"\1: [dato sensibile rimosso]", value,
+            )
+        return value
+
+    safe = redact(detail)
+    record = {"checkpoint": checkpoint, **safe}
+    target.append(record)
+    if progress:
+        progress(SyncProgressEvent(checkpoint, session_id, safe))
+
+
+def _is_kpi_resolver_error(error: Mapping[str, Any]) -> bool:
+    path = error.get("path")
+    return (
+        isinstance(path, (list, tuple))
+        and len(path) == 4
+        and path[0] == "res"
+        and path[1] == "athleteSessions"
+        and isinstance(path[2], int)
+        and path[3] in {"identifierKpi", "kpi"}
+    )
+
+
+def _kpi_only_graphql_errors(exc: BaseException) -> tuple[dict[str, Any], ...]:
+    raw_errors = tuple(getattr(exc, "graphql_errors", ()))
+    return tuple(dict(item) for item in raw_errors) if raw_errors and all(
+        isinstance(item, Mapping) and _is_kpi_resolver_error(item) for item in raw_errors
+    ) else ()
+
+
+def run_graphql_sync(
+    services: GPExeServices, database: "PASConnectDatabase", request: SyncRequest,
+    *, progress: Callable[[SyncProgressEvent], None] | None = None,
+) -> SyncRunResult:
+    """Sincronizza bundle GPExe per TeamSession usando esclusivamente GraphQL."""
+    from .database import PASConnectDatabase
+    if not isinstance(database, PASConnectDatabase):
+        raise TypeError("database deve essere un PASConnectDatabase")
+    request.validate()
+    date_from, date_to = request.resolved_dates(database.latest_team_session_updated_at())
+    discovered = services.team_sessions(
+        team_id=request.team_id, start_date=date_from, end_date=date_to,
+    )
+    selected = {int(item) for item in request.selected_session_ids}
+    sessions = [item for item in discovered if not selected or int(item.get("id")) in selected]
+    if selected - {int(item.get("id")) for item in sessions}:
+        missing = sorted(selected - {int(item.get("id")) for item in sessions})
+        raise ValueError(f"TeamSession non trovate nel contesto Team/date: {missing}")
+    run_id = database.create_sync_run({
+        "team_id": request.team_id, "season": request.season, "mode": request.mode,
+        "date_from": date_from, "date_to": date_to, "requested_count": len(sessions),
+        "retry_of_run_id": request.retry_of_run_id,
+    })
+    prior_ready = set(database.latest_ready_session_ids(team_id=request.team_id))
+    results: list[SessionSyncResult] = []
+    for raw_session in sessions:
+        session_id = int(raw_session["id"])
+        started_at = datetime.now(timezone.utc).isoformat()
+        trace: list[dict[str, Any]] = []
+        emit = lambda checkpoint, detail: _redacted_trace(
+            trace, checkpoint, detail, session_id=session_id, progress=progress,
+        )
+        emit("C-01", {"selectedTeamSessionId": session_id, "pythonType": type(session_id).__name__})
+        emit("C-02", {"providerTeamSessionId": session_id})
+        if session_id in prior_ready and not request.force_refresh:
+            result = SessionSyncResult(session_id, "SKIPPED", "READY", diagnostics=tuple(trace))
+        else:
+            try:
+                kpi_provider_errors: tuple[dict[str, Any], ...] = ()
+                try:
+                    bundle = services.team_session_athlete_sessions(
+                        team_session_id=session_id, trace=emit,
+                    )
+                except APIRequestError as exc:
+                    kpi_provider_errors = _kpi_only_graphql_errors(exc)
+                    if not kpi_provider_errors:
+                        raise
+                    emit("KPI-PROVIDER-ERROR", {
+                        "status": "PARTIAL", "reason": "provider KPI error",
+                        "graphqlErrors": list(kpi_provider_errors),
+                    })
+                    bundle = services.team_session_athlete_sessions_without_kpis(
+                        team_session_id=session_id, trace=emit,
+                    )
+                raw_athlete_sessions = [
+                    item for item in bundle.get("athleteSessions", []) if isinstance(item, Mapping)
+                ]
+                athletes_by_id: dict[int, Mapping[str, Any]] = {}
+                for item in raw_athlete_sessions:
+                    athlete = item.get("athlete") if isinstance(item.get("athlete"), Mapping) else None
+                    if athlete and athlete.get("id") not in (None, ""):
+                        athletes_by_id[int(athlete["id"])] = athlete
+                mapped_parent = map_team_session({**raw_session, "team": request.team_id})
+                mapped_athletes = [
+                    map_graphql_athlete(item, team_id=request.team_id)
+                    for item in athletes_by_id.values()
+                ]
+                mapped_sessions = [
+                    map_graphql_athlete_session(item, team_session_id=session_id, template_id=None)
+                    for item in raw_athlete_sessions
+                ]
+                tracks = sum(bool(item.get("track") and item["track"].get("id") not in (None, ""))
+                             for item in mapped_sessions)
+                kpis = sum(len(item.get("identifier_kpi") or []) + len(item.get("kpi") or [])
+                           for item in mapped_sessions)
+                structurally_complete = bool(mapped_sessions) and tracks == len(mapped_sessions)
+                ready = structurally_complete and not kpi_provider_errors
+                if ready:
+                    database.upsert_graphql_team_session_bundle(
+                        mapped_parent, mapped_athletes, mapped_sessions, season=request.season,
+                    )
+                elif structurally_complete and kpi_provider_errors:
+                    database.upsert_graphql_team_session_bundle(
+                        mapped_parent, mapped_athletes, mapped_sessions, replace_kpis=False,
+                        season=request.season,
+                    )
+                status = "SUCCESS" if ready else "PARTIAL"
+                provider_error = None
+                if kpi_provider_errors:
+                    messages = sorted({str(item.get("message") or "provider KPI error")
+                                       for item in kpi_provider_errors})
+                    provider_error = _redacted_trace_message(
+                        "provider KPI error: " + "; ".join(messages)
+                    )
+                result = SessionSyncResult(
+                    session_id, status, "READY" if ready else "INCOMPLETE",
+                    len(mapped_sessions), tracks, 0 if kpi_provider_errors else kpis,
+                    error_message=provider_error, diagnostics=tuple(trace),
+                )
+            except Exception as exc:
+                safe_error = _redacted_trace_message(str(exc))
+                result = SessionSyncResult(
+                    session_id, "FAILED", "INCOMPLETE", error_message=safe_error, diagnostics=tuple(trace),
+                )
+        database.record_session_sync_result({
+            "sync_run_id": run_id, "provider_session_id": session_id, "team_id": request.team_id,
+            "status": result.status, "readiness": result.readiness,
+            "athlete_sessions_count": result.athlete_sessions_count,
+            "tracks_count": result.tracks_count, "kpis_count": result.kpis_count,
+            "operation_name": "TeamSessionAthletesession", "variables": {"id": session_id},
+            "diagnostics": list(result.diagnostics), "error_message": result.error_message,
+            "started_at": started_at,
+        })
+        results.append(result)
+    counts = {name.lower() + "_count": sum(item.status == name for item in results)
+              for name in ("SUCCESS", "PARTIAL", "FAILED", "SKIPPED")}
+    aggregate = "success" if results and not counts["failed_count"] and not counts["partial_count"] else (
+        "partial" if counts["partial_count"] or counts["success_count"] or counts["skipped_count"] else "failed"
+    )
+    database.complete_sync_run(run_id, {"status": aggregate, **counts})
+    return SyncRunResult(run_id, aggregate, tuple(results))
+
+
+def retry_sync_session(
+    services: GPExeServices, database: "PASConnectDatabase", request: SyncRequest,
+    session_id: int, *, run_id: int,
+) -> SyncRunResult:
+    return run_graphql_sync(
+        services, database,
+        replace(request, selected_session_ids=(int(session_id),), force_refresh=True, retry_of_run_id=run_id),
+    )
+
+
+def retry_sync_errors(
+    services: GPExeServices, database: "PASConnectDatabase", request: SyncRequest,
+    *, run_id: int,
+) -> SyncRunResult:
+    session_ids = tuple(database.retryable_session_ids(run_id))
+    if not session_ids:
+        raise ValueError("Nessuna TeamSession FAILED/PARTIAL da ritentare.")
+    return run_graphql_sync(
+        services, database,
+        replace(request, selected_session_ids=session_ids, force_refresh=True, retry_of_run_id=run_id),
+    )
 
 
 def _rows_from_response(payload: Any) -> tuple[list[Mapping[str, Any]], int | None]:
@@ -248,108 +520,22 @@ class FullSyncEvent:
 
 
 def run_full_sync(
-    client: GPExeClient,
+    client: GPExeClient | GPExeServices,
     database: "PASConnectDatabase",
     *,
     progress: Callable[[FullSyncEvent], None] | None = None,
-) -> dict[str, Any]:
-    """Esegue in sequenza la pipeline GPExe disponibile nella release.
+    request: SyncRequest | None = None,
+) -> SyncRunResult:
+    """Entry point compatibile, ora esclusivamente GraphQL."""
+    if request is None:
+        raise ValueError("Il Full Sync GraphQL richiede Team, stagione e intervallo espliciti.")
+    services = client if hasattr(client, "team_session_athlete_sessions") else GPExeServices(client)
 
-    La pipeline comprende anagrafiche, Team Sessions, dettagli Team Sessions e
-    Athlete Sessions. Ogni fase è persistita prima di passare alla successiva;
-    un errore di singolo dettaglio resta isolato nei payload di sincronizzazione.
-    """
-    from .database import PASConnectDatabase
-    if not isinstance(database, PASConnectDatabase):
-        raise TypeError("database deve essere un PASConnectDatabase")
-
-    steps = (
-        "Anagrafiche",
-        "Team Sessions",
-        "Dettagli Team Sessions",
-        "Athlete Sessions",
-        "Tracks",
-    )
-    events: list[dict[str, Any]] = []
-
-    def emit(index: int, status: str, message: str) -> None:
-        event = FullSyncEvent(steps[index - 1], index, len(steps), status, message)
-        events.append(event.__dict__.copy())
+    def bridge(event: SyncProgressEvent) -> None:
         if progress:
-            progress(event)
+            progress(FullSyncEvent(
+                event.checkpoint, 1, 1, "running",
+                f"TeamSession {event.provider_session_id}: {dict(event.detail)}",
+            ))
 
-    started_at = datetime.now(timezone.utc).isoformat()
-    result: dict[str, Any] = {"started_at": started_at, "steps": {}, "events": events}
-
-    emit(1, "running", "Sincronizzazione anagrafiche GPExe...")
-    reference_payload = sync_reference_data(client)
-    reference_result = database.replace_reference_data(reference_payload)
-    result["steps"]["reference"] = {
-        "counts": reference_result.counts,
-        "sync_run_id": reference_result.sync_run_id,
-    }
-    emit(1, "success", "Anagrafiche sincronizzate.")
-
-    emit(2, "running", "Sincronizzazione Team Sessions...")
-    updated_since = database.latest_team_session_updated_at()
-    sessions_payload = sync_team_sessions(client, updated_since=updated_since)
-    sessions_result = database.upsert_team_sessions(sessions_payload)
-    result["steps"]["team_sessions"] = {
-        "received": sessions_result.received,
-        "inserted": sessions_result.inserted,
-        "updated": sessions_result.updated,
-        "sync_run_id": sessions_result.sync_run_id,
-    }
-    emit(2, "success", "Team Sessions sincronizzate.")
-
-    emit(3, "running", "Sincronizzazione dettagli Team Sessions...")
-    session_ids = database.team_session_ids_for_detail_sync(only_missing=True)
-    if session_ids:
-        detail_payload = sync_team_session_details(client, session_ids)
-        detail_result = database.upsert_team_session_details(detail_payload)
-        detail_summary = {
-            "requested": len(session_ids),
-            "received": detail_result.received,
-            "inserted": detail_result.inserted,
-            "updated": detail_result.updated,
-            "failed": detail_result.failed,
-            "athlete_rows": detail_result.athlete_rows,
-            "metric_headers": detail_result.metric_headers,
-            "sync_run_id": detail_result.sync_run_id,
-        }
-    else:
-        detail_summary = {"requested": 0, "received": 0, "inserted": 0, "updated": 0, "failed": 0}
-    result["steps"]["team_session_details"] = detail_summary
-    emit(3, "success", "Dettagli Team Sessions sincronizzati.")
-
-    emit(4, "running", "Sincronizzazione Athlete Sessions...")
-    athlete_refs = database.athlete_session_refs_for_detail_sync(only_missing=True)
-    if athlete_refs:
-        athlete_payload = sync_athlete_session_details(client, athlete_refs)
-        athlete_result = database.upsert_athlete_session_details(athlete_payload)
-        athlete_summary = {
-            "requested": len(athlete_refs),
-            "received": athlete_result.received,
-            "inserted": athlete_result.inserted,
-            "updated": athlete_result.updated,
-            "failed": athlete_result.failed,
-            "sync_run_id": athlete_result.sync_run_id,
-        }
-    else:
-        athlete_summary = {"requested": 0, "received": 0, "inserted": 0, "updated": 0, "failed": 0}
-    result["steps"]["athlete_sessions"] = athlete_summary
-    emit(4, "success", "Athlete Sessions sincronizzate.")
-
-    emit(5, "running", "Sincronizzazione Tracks...")
-    try:
-        tracks_payload = sync_tracks(client)
-        tracks_count = database.replace_tracks(tracks_payload)
-        result["steps"]["tracks"] = {"received": tracks_count, "failed": 0}
-        emit(5, "success", "Tracks sincronizzati.")
-    except Exception as exc:
-        result["steps"]["tracks"] = {"received": 0, "failed": 1, "error": str(exc)}
-        emit(5, "warning", "Tracks non disponibili; pipeline principale completata.")
-
-    result["completed_at"] = datetime.now(timezone.utc).isoformat()
-    result["status"] = "success"
-    return result
+    return run_graphql_sync(services, database, request, progress=bridge)

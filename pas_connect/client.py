@@ -124,7 +124,29 @@ class GPExeGraphQLClient:
                     raise AuthenticationError(
                         f"Credenziali GPExe non valide o autenticazione rifiutata: {safe_message}"
                     )
-                raise APIRequestError(f"Errore GraphQL GPExe: {safe_message}")
+                safe_errors: list[dict[str, Any]] = []
+                for item in errors:
+                    if not isinstance(item, Mapping):
+                        safe_errors.append({"message": "Errore non specificato"})
+                        continue
+                    safe_item: dict[str, Any] = {
+                        "message": self._redact(str(item.get("message", "Errore non specificato")))
+                    }
+                    if isinstance(item.get("path"), (list, tuple)):
+                        safe_item["path"] = [
+                            self._redact(value) if isinstance(value, str) else value
+                            for value in item["path"]
+                        ]
+                    extensions = item.get("extensions")
+                    if isinstance(extensions, Mapping) and extensions.get("code") is not None:
+                        safe_item["extensions"] = {
+                            "code": self._redact(str(extensions["code"]))
+                        }
+                    safe_errors.append(safe_item)
+                raise APIRequestError(
+                    f"Errore GraphQL GPExe: {safe_message}",
+                    graphql_errors=tuple(safe_errors),
+                )
             data = decoded.get("data")
             if not isinstance(data, Mapping):
                 raise APIRequestError("La risposta GraphQL GPExe non contiene un campo data valido.")

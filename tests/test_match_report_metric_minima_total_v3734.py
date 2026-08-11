@@ -14,7 +14,7 @@ def test_metric_minima_and_total_match_layout_are_present():
     reporting = (ROOT / "modules" / "reporting.py").read_text(encoding="utf-8")
     app = (ROOT / "app.py").read_text(encoding="utf-8")
     version = (ROOT / "modules" / "version.py").read_text(encoding="utf-8")
-    assert 'APP_BUILD_VERSION = "4.12.0"' in version
+    assert 'APP_BUILD_VERSION = "4.13.0"' in version
     assert '"Relative Distance (m/min)": 80.0' in reporting
     assert '"MPE Rec Avg Time (s)": 5.0' in reporting
     assert 'team and summary_mode == "match_total"' in reporting

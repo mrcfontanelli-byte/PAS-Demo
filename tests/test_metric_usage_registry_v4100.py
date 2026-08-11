@@ -38,8 +38,8 @@ def test_schema_9_adds_non_destructive_usage_table(tmp_path):
             "SELECT value FROM pas_connect_meta WHERE key='schema_version'"
         ).fetchone()[0]
         assert connection.execute("SELECT team_name FROM gpexe_teams").fetchone()[0] == "TEAM"
-    assert SCHEMA_VERSION == 10
-    assert version == "10"
+    assert SCHEMA_VERSION == 12
+    assert version == "12"
     assert columns == {
         "id", "canonical_metric", "module", "view_name", "usage_type", "status", "enabled",
         "required", "display_order", "notes", "created_at", "updated_at",
