@@ -62,7 +62,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, retry_sync_session, retry_sync_errors, SyncRequest, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS, format_metric_threshold
+from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeRESTClient, GPExeRESTService, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, retry_sync_session, retry_sync_errors, SyncRequest, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS, format_metric_threshold
 from pas_connect.pas_bridge import available_sessions, available_contexts, available_athletes, has_compatible_performance_rows
 from pas_connect.mapper import map_team_session, map_graphql_athlete, map_graphql_athlete_session
 from pas_connect.endpoints import TEAMS
@@ -3647,11 +3647,24 @@ with settings_column:
                                 hide_index=True, use_container_width=True,
                             )
 
+            with pas_connect_options:
+                st.markdown("##### Transport Full Sync")
+                gpexe_sync_transport_label = st.radio(
+                    "API GPExe",
+                    ("REST ufficiale", "GraphQL legacy/internal"),
+                    key="pas_gpexe_sync_transport",
+                    help="Scelta esplicita senza fallback tra REST, GraphQL o Excel.",
+                )
+            gpexe_sync_transport = (
+                "REST" if gpexe_sync_transport_label == "REST ufficiale" else "GRAPHQL"
+            )
+
             with pas_connect_main:
                 st.divider()
                 st.markdown("##### Sincronizzazione completa")
                 st.caption(
-                    "Orchestrazione esclusivamente GraphQL per TeamSession, AthleteSession, Track e KPI. "
+                    f"Transport selezionato: {gpexe_sync_transport_label}. "
+                    "Orchestrazione per TeamSession, AthleteSession, Track e KPI. "
                     "Ogni TeamSession viene pubblicata atomicamente; Excel non viene consultato né modificato."
                 )
                 if st.button(
@@ -3663,13 +3676,24 @@ with settings_column:
                 ):
                     try:
                         runtime_config = GPExeConfig(
-                            base_url=str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip(),
-                            token=str(st.session_state.get("pas_gpexe_runtime_token", "")).strip(),
-                            timeout_seconds=120.0,
-                            verify_tls=True,
+                            base_url=(str(gpexe_secrets.get("base_url", gpexe_base_url)).strip()
+                                      if gpexe_sync_transport == "REST" else
+                                      str(st.session_state.get("pas_gpexe_connected_base_url", gpexe_base_url)).strip()),
+                            username=(str(gpexe_secrets.get("username", "")).strip()
+                                      if gpexe_sync_transport == "REST" else ""),
+                            password=(str(gpexe_secrets.get("password", ""))
+                                      if gpexe_sync_transport == "REST" else ""),
+                            token=("" if gpexe_sync_transport == "REST" else
+                                   str(st.session_state.get("pas_gpexe_runtime_token", "")).strip()),
+                            timeout_seconds=120.0, verify_tls=True,
                         )
                         runtime_config.validate(require_credentials=True)
-                        runtime_services = GPExeServices(GPExeClient(runtime_config))
+                        runtime_rest_client = None
+                        if gpexe_sync_transport == "REST":
+                            runtime_rest_client = GPExeRESTClient(runtime_config)
+                            runtime_services = GPExeRESTService(runtime_rest_client)
+                        else:
+                            runtime_services = GPExeServices(GPExeClient(runtime_config))
                         full_database = PASConnectDatabase.default()
                         progress_bar = st.progress(0, text="Preparazione sincronizzazione...")
                         log_box = st.empty()
@@ -3687,15 +3711,22 @@ with settings_column:
                             season=str(selected_team.get("season") or "").strip(),
                             mode="MANUAL", date_from=start_date.isoformat(), date_to=end_date.isoformat(),
                             selected_session_ids=tuple(sorted(int(item) for item in selected_ids)),
+                            transport=gpexe_sync_transport,
                         )
-                        full_result = run_full_sync(
-                            runtime_services, full_database, progress=_full_sync_progress,
-                            request=sync_request,
-                        )
+                        try:
+                            if runtime_rest_client is not None:
+                                runtime_rest_client.authenticate()
+                            full_result = run_full_sync(
+                                runtime_services, full_database, progress=_full_sync_progress,
+                                request=sync_request,
+                            )
+                        finally:
+                            if runtime_rest_client is not None:
+                                runtime_rest_client.clear_token()
                         progress_bar.progress(100, text="Sincronizzazione completa terminata")
                         st.session_state["pas_gpexe_last_full_sync"] = full_result
                         st.success(
-                            f"Sync GraphQL {full_result.status}: "
+                            f"Sync {full_result.transport} {full_result.status}: "
                             f"{full_result.counts['success_count']} SUCCESS · "
                             f"{full_result.counts['partial_count']} PARTIAL · "
                             f"{full_result.counts['failed_count']} FAILED · "
@@ -3715,6 +3746,10 @@ with settings_column:
                     row for row in sync_results
                     if int(row["sync_run_id"]) == latest_run_id
                 ]
+                latest_transport = (
+                    "REST" if str(latest_run_rows[0].get("transport_resource", "")).startswith("rest_")
+                    else "GRAPHQL"
+                )
                 statuses = sorted({str(row["status"]) for row in latest_run_rows})
                 status_label = statuses[0] if len(statuses) == 1 else " / ".join(statuses)
                 readiness_label = (
@@ -3725,18 +3760,19 @@ with settings_column:
                 )
                 with pas_connect_main:
                     st.markdown("##### Ultimo sync")
-                    summary_columns = st.columns(6)
-                    summary_columns[0].metric("Status", status_label)
-                    summary_columns[1].metric("Readiness", readiness_label)
-                    summary_columns[2].metric("TeamSession", len(latest_run_rows))
-                    summary_columns[3].metric(
+                    summary_columns = st.columns(7)
+                    summary_columns[0].metric("Transport", latest_transport)
+                    summary_columns[1].metric("Status", status_label)
+                    summary_columns[2].metric("Readiness", readiness_label)
+                    summary_columns[3].metric("TeamSession", len(latest_run_rows))
+                    summary_columns[4].metric(
                         "AthleteSession",
                         sum(int(row["athlete_sessions_count"]) for row in latest_run_rows),
                     )
-                    summary_columns[4].metric(
+                    summary_columns[5].metric(
                         "Track", sum(int(row["tracks_count"]) for row in latest_run_rows)
                     )
-                    summary_columns[5].metric(
+                    summary_columns[6].metric(
                         "KPI", sum(int(row["kpis_count"]) for row in latest_run_rows)
                     )
 
@@ -3744,9 +3780,11 @@ with settings_column:
                     st.markdown("##### Ultimi sync")
                     option_rows = [{
                         "run": row["sync_run_id"],
+                        "transport": ("REST" if str(row.get("transport_resource", "")).startswith("rest_") else "GRAPHQL"),
                         "TeamSession": row["provider_session_id"],
                         "status": row["status"],
                         "readiness": row["readiness"],
+                        "processing": '"processing": true' in str(row.get("diagnostics_json", "")).lower(),
                         "AthleteSession": row["athlete_sessions_count"],
                         "Track": row["tracks_count"],
                         "KPI": row["kpis_count"],
@@ -3772,20 +3810,37 @@ with settings_column:
                             mode="MANUAL",
                             date_from=start_date.isoformat(),
                             date_to=end_date.isoformat(),
+                            transport=latest_transport,
                         )
+
+                        def _retry_services():
+                            if latest_transport == "GRAPHQL":
+                                return foundation_provider.services, None
+                            retry_config = GPExeConfig(
+                                base_url=str(gpexe_secrets.get("base_url", gpexe_base_url)).strip(),
+                                username=str(gpexe_secrets.get("username", "")).strip(),
+                                password=str(gpexe_secrets.get("password", "")),
+                                timeout_seconds=120.0, verify_tls=True,
+                            )
+                            retry_client = GPExeRESTClient(retry_config)
+                            return GPExeRESTService(retry_client), retry_client
                         with retry_col1:
                             if st.button(
                                 "Riprova sessione",
                                 key="pas_gpexe_retry_one",
                                 use_container_width=True,
                             ):
-                                retry_sync_session(
-                                    foundation_provider.services,
-                                    sync_database,
-                                    retry_request,
-                                    retry_session,
-                                    run_id=latest_run_id,
-                                )
+                                retry_services, retry_client = _retry_services()
+                                try:
+                                    if retry_client is not None:
+                                        retry_client.authenticate()
+                                    retry_sync_session(
+                                        retry_services, sync_database, retry_request,
+                                        retry_session, run_id=latest_run_id,
+                                    )
+                                finally:
+                                    if retry_client is not None:
+                                        retry_client.clear_token()
                                 st.rerun()
                         with retry_col2:
                             if st.button(
@@ -3793,12 +3848,17 @@ with settings_column:
                                 key="pas_gpexe_retry_errors",
                                 use_container_width=True,
                             ):
-                                retry_sync_errors(
-                                    foundation_provider.services,
-                                    sync_database,
-                                    retry_request,
-                                    run_id=latest_run_id,
-                                )
+                                retry_services, retry_client = _retry_services()
+                                try:
+                                    if retry_client is not None:
+                                        retry_client.authenticate()
+                                    retry_sync_errors(
+                                        retry_services, sync_database, retry_request,
+                                        run_id=latest_run_id,
+                                    )
+                                finally:
+                                    if retry_client is not None:
+                                        retry_client.clear_token()
                                 st.rerun()
 
                 with pas_connect_advanced:

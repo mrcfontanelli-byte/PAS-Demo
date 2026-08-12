@@ -12,6 +12,8 @@ from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, TEAM_S
 from .mapper import map_athlete, map_category, map_many, map_tag, map_team, map_team_session, map_team_session_detail, map_athlete_session_detail, map_graphql_athlete, map_graphql_athlete_session
 from .services import GPExeServices
 from .exceptions import APIRequestError
+from .rest_persistence import GPExeRESTPersistenceGate
+from .rest_service import GPExeRESTService
 
 
 class SyncResource(str, Enum):
@@ -59,6 +61,7 @@ def build_default_sync_plan() -> SyncPlan:
 
 
 SYNC_MODES = {"MANUAL", "QUICK", "FROM_LAST_SESSION"}
+SYNC_TRANSPORTS = {"GRAPHQL", "REST"}
 
 
 @dataclass(frozen=True)
@@ -71,6 +74,7 @@ class SyncRequest:
     selected_session_ids: tuple[int, ...] = ()
     force_refresh: bool = False
     retry_of_run_id: int | None = None
+    transport: str = "GRAPHQL"
 
     def validate(self) -> "SyncRequest":
         if int(self.team_id) <= 0:
@@ -79,6 +83,8 @@ class SyncRequest:
             raise ValueError("Stagione obbligatoria.")
         if self.mode not in SYNC_MODES:
             raise ValueError(f"Modalità sync non valida: {self.mode}")
+        if self.transport.upper() not in SYNC_TRANSPORTS:
+            raise ValueError(f"Transport GPExe non valido: {self.transport}")
         if any(int(item) <= 0 for item in self.selected_session_ids):
             raise ValueError("Gli ID TeamSession devono essere interi positivi e non vuoti.")
         if self.date_from and self.date_to and self.date_from > self.date_to:
@@ -110,6 +116,7 @@ class SessionSyncResult:
     kpis_count: int = 0
     error_message: str | None = None
     diagnostics: tuple[dict[str, Any], ...] = ()
+    processing: bool = False
 
 
 @dataclass(frozen=True)
@@ -117,6 +124,7 @@ class SyncRunResult:
     sync_run_id: int
     status: str
     sessions: tuple[SessionSyncResult, ...]
+    transport: str = "GRAPHQL"
 
     @property
     def counts(self) -> dict[str, int]:
@@ -202,9 +210,11 @@ def run_graphql_sync(
     run_id = database.create_sync_run({
         "team_id": request.team_id, "season": request.season, "mode": request.mode,
         "date_from": date_from, "date_to": date_to, "requested_count": len(sessions),
-        "retry_of_run_id": request.retry_of_run_id,
+        "retry_of_run_id": request.retry_of_run_id, "transport": "graphql",
     })
-    prior_ready = set(database.latest_ready_session_ids(team_id=request.team_id))
+    prior_ready = set(database.latest_ready_session_ids(
+        team_id=request.team_id, transport="graphql",
+    ))
     results: list[SessionSyncResult] = []
     for raw_session in sessions:
         session_id = int(raw_session["id"])
@@ -301,30 +311,118 @@ def run_graphql_sync(
         "partial" if counts["partial_count"] or counts["success_count"] or counts["skipped_count"] else "failed"
     )
     database.complete_sync_run(run_id, {"status": aggregate, **counts})
-    return SyncRunResult(run_id, aggregate, tuple(results))
+    return SyncRunResult(run_id, aggregate, tuple(results), "GRAPHQL")
+
+
+def run_rest_sync(
+    service: GPExeRESTService, database: "PASConnectDatabase", request: SyncRequest,
+    *, progress: Callable[[SyncProgressEvent], None] | None = None,
+) -> SyncRunResult:
+    """Full Sync REST seriale, privo di fallback e polling impliciti."""
+    from .database import PASConnectDatabase
+    if not isinstance(service, GPExeRESTService):
+        raise TypeError("service deve essere un GPExeRESTService")
+    if not isinstance(database, PASConnectDatabase):
+        raise TypeError("database deve essere un PASConnectDatabase")
+    request.validate()
+    session_ids = tuple(dict.fromkeys(int(item) for item in request.selected_session_ids))
+    if not session_ids:
+        raise ValueError("Il Full Sync REST richiede TeamSession selezionate esplicitamente.")
+    run_id = database.create_sync_run({
+        "team_id": request.team_id, "season": request.season, "mode": request.mode,
+        "date_from": request.date_from, "date_to": request.date_to,
+        "requested_count": len(session_ids), "retry_of_run_id": request.retry_of_run_id,
+        "transport": "rest",
+    })
+    prior_ready = set(database.latest_ready_session_ids(
+        team_id=request.team_id, transport="rest",
+    ))
+    gate = GPExeRESTPersistenceGate(database)
+    results: list[SessionSyncResult] = []
+    for session_id in session_ids:
+        started_at = datetime.now(timezone.utc).isoformat()
+        trace: list[dict[str, Any]] = []
+        emit = lambda checkpoint, detail: _redacted_trace(
+            trace, checkpoint, detail, session_id=session_id, progress=progress,
+        )
+        emit("REST-BUNDLE", {"transport": "REST", "providerTeamSessionId": session_id})
+        if session_id in prior_ready and not request.force_refresh:
+            item = SessionSyncResult(session_id, "SKIPPED", "READY", diagnostics=tuple(trace))
+        else:
+            try:
+                built = service.build_team_session_bundle(session_id, all_params=True)
+                for diagnostic in built.diagnostics:
+                    emit("REST-DIAGNOSTIC", diagnostic)
+                bundle_sessions = tuple((built.bundle or {}).get("athlete_sessions") or ())
+                tracks = sum(bool((row.get("track") or {}).get("provider_track_id"))
+                             for row in bundle_sessions)
+                active_kpis = sum(sum(bool(metric.get("active"))
+                                      for metric in row.get("kpis") or ())
+                                  for row in bundle_sessions)
+                if built.status == "READY" and not built.processing:
+                    published = gate.publish(built, season=request.season)
+                    item = SessionSyncResult(
+                        session_id, "SUCCESS", "READY", published.athlete_sessions_count,
+                        published.tracks_count, published.kpis_count,
+                        diagnostics=tuple(trace), processing=False,
+                    )
+                else:
+                    status = "FAILED" if built.status == "FAILED" else "PARTIAL"
+                    item = SessionSyncResult(
+                        session_id, status, "INCOMPLETE", len(bundle_sessions), tracks,
+                        active_kpis, error_message="REST bundle non pubblicabile.",
+                        diagnostics=tuple(trace), processing=built.processing,
+                    )
+            except Exception as exc:
+                item = SessionSyncResult(
+                    session_id, "FAILED", "INCOMPLETE",
+                    error_message=_redacted_trace_message(service.client.redact(str(exc))),
+                    diagnostics=tuple(trace), processing=False,
+                )
+        database.record_session_sync_result({
+            "sync_run_id": run_id, "provider_session_id": session_id,
+            "team_id": request.team_id, "status": item.status, "readiness": item.readiness,
+            "athlete_sessions_count": item.athlete_sessions_count,
+            "tracks_count": item.tracks_count, "kpis_count": item.kpis_count,
+            "operation_name": "RESTv2TeamSessionBundle",
+            "variables": {"id": session_id, "transport": "REST"},
+            "diagnostics": [*item.diagnostics, {"processing": item.processing}],
+            "error_message": item.error_message, "started_at": started_at,
+        })
+        results.append(item)
+    counts = {name.lower() + "_count": sum(item.status == name for item in results)
+              for name in ("SUCCESS", "PARTIAL", "FAILED", "SKIPPED")}
+    aggregate = "success" if results and not counts["failed_count"] and not counts["partial_count"] else (
+        "partial" if counts["partial_count"] or counts["success_count"] or counts["skipped_count"] else "failed"
+    )
+    database.complete_sync_run(run_id, {
+        "status": aggregate, **counts, "transport": "REST",
+        "processing_count": sum(item.processing for item in results),
+    })
+    return SyncRunResult(run_id, aggregate, tuple(results), "REST")
 
 
 def retry_sync_session(
-    services: GPExeServices, database: "PASConnectDatabase", request: SyncRequest,
+    services: GPExeServices | GPExeRESTService, database: "PASConnectDatabase", request: SyncRequest,
     session_id: int, *, run_id: int,
 ) -> SyncRunResult:
-    return run_graphql_sync(
-        services, database,
-        replace(request, selected_session_ids=(int(session_id),), force_refresh=True, retry_of_run_id=run_id),
-    )
+    retried = replace(request, selected_session_ids=(int(session_id),), force_refresh=True,
+                      retry_of_run_id=run_id)
+    runner = run_rest_sync if retried.transport.upper() == "REST" else run_graphql_sync
+    return runner(services, database, retried)
 
 
 def retry_sync_errors(
-    services: GPExeServices, database: "PASConnectDatabase", request: SyncRequest,
+    services: GPExeServices | GPExeRESTService, database: "PASConnectDatabase", request: SyncRequest,
     *, run_id: int,
 ) -> SyncRunResult:
     session_ids = tuple(database.retryable_session_ids(run_id))
     if not session_ids:
         raise ValueError("Nessuna TeamSession FAILED/PARTIAL da ritentare.")
-    return run_graphql_sync(
-        services, database,
-        replace(request, selected_session_ids=session_ids, force_refresh=True, retry_of_run_id=run_id),
-    )
+    retried = replace(request, selected_session_ids=session_ids, force_refresh=True,
+                      retry_of_run_id=run_id)
+    runner = run_rest_sync if retried.transport.upper() == "REST" else run_graphql_sync
+    return runner(services, database, retried)
 
 
 def _rows_from_response(payload: Any) -> tuple[list[Mapping[str, Any]], int | None]:
@@ -520,17 +618,15 @@ class FullSyncEvent:
 
 
 def run_full_sync(
-    client: GPExeClient | GPExeServices,
+    client: GPExeClient | GPExeServices | GPExeRESTService,
     database: "PASConnectDatabase",
     *,
     progress: Callable[[FullSyncEvent], None] | None = None,
     request: SyncRequest | None = None,
 ) -> SyncRunResult:
-    """Entry point compatibile, ora esclusivamente GraphQL."""
+    """Entry point con transport esplicito e nessun fallback automatico."""
     if request is None:
         raise ValueError("Il Full Sync GraphQL richiede Team, stagione e intervallo espliciti.")
-    services = client if hasattr(client, "team_session_athlete_sessions") else GPExeServices(client)
-
     def bridge(event: SyncProgressEvent) -> None:
         if progress:
             progress(FullSyncEvent(
@@ -538,4 +634,11 @@ def run_full_sync(
                 f"TeamSession {event.provider_session_id}: {dict(event.detail)}",
             ))
 
+    if request.transport.upper() == "REST":
+        if not isinstance(client, GPExeRESTService):
+            raise TypeError("Il transport REST richiede GPExeRESTService.")
+        return run_rest_sync(client, database, request, progress=bridge)
+    if isinstance(client, GPExeRESTService):
+        raise TypeError("Il transport GraphQL non accetta GPExeRESTService.")
+    services = client if hasattr(client, "team_session_athlete_sessions") else GPExeServices(client)
     return run_graphql_sync(services, database, request, progress=bridge)

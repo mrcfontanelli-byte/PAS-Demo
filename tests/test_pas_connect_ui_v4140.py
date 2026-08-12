@@ -12,7 +12,7 @@ def _app_source() -> str:
 def test_release_version_and_pas_connect_panels_are_declared_in_target_order():
     app = _app_source()
     version = (ROOT / "modules" / "version.py").read_text(encoding="utf-8")
-    assert 'APP_BUILD_VERSION = "4.14.0"' in version
+    assert 'APP_BUILD_VERSION = "4.15.0"' in version
 
     markers = (
         'pas_connect_main = st.container()',
@@ -136,12 +136,25 @@ def test_existing_streamlit_state_keys_are_not_duplicated():
         assert app.count(f'key="{key}"') == 1
 
 
-def test_ui_release_does_not_change_sync_database_or_client_engines():
+def test_ui_release_does_not_change_client_or_legacy_service_engines():
     status = __import__("subprocess").run(
-        ["git", "diff", "--name-only", "--", "pas_connect/sync.py", "pas_connect/database.py", "pas_connect/client.py", "pas_connect/services.py"],
+        ["git", "diff", "--name-only", "--", "pas_connect/client.py", "pas_connect/services.py"],
         cwd=ROOT,
         check=True,
         capture_output=True,
         text=True,
     )
     assert status.stdout.strip() == ""
+
+
+def test_full_sync_transports_are_explicit_and_separate():
+    from pas_connect.sync import run_graphql_sync, run_rest_sync
+
+    assert callable(run_graphql_sync)
+    assert callable(run_rest_sync)
+
+
+def test_graphql_database_entrypoint_remains_backward_compatible():
+    from pas_connect.database import PASConnectDatabase
+
+    assert callable(PASConnectDatabase.upsert_graphql_team_session_bundle)

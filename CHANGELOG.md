@@ -1,5 +1,18 @@
 # Changelog
 
+## PAS v4.15.0 - 2026-08-13
+
+- Integrata l'API REST v2 ufficiale GPExe con autenticazione dedicata e client separato dal percorso GraphQL legacy/internal.
+- Implementati contratti reali per TeamSession detail, AthleteSession list e AthleteSession detail, fixture anonimizzate, mapping provider-neutral e bundle builder interamente in memoria.
+- Aggiunto il persistence gate: pubblica esclusivamente bundle `READY` e preserva atomicità, rollback, idempotenza, isolamento Team/stagione, membership atleta–Team–stagione e provenance `REST v2`.
+- Collegato il transport REST al Full Sync tramite `run_full_sync()` e aggiunto il selector esplicito **REST ufficiale** / **GraphQL legacy/internal**, senza fallback automatico REST→GraphQL, GraphQL→REST o verso Excel.
+- Estesi run history, risultati per sessione e riepilogo ultimo sync con transport, status, readiness e stati `READY`, `INCOMPLETE`, `FAILED` e `processing`.
+- Gestito HTTP 202 come `processing/not ready`, senza pubblicazione né polling aggressivo; preservato `Retry-After` e applicato il rate limit ufficiale di 40 richieste/minuto con esecuzione seriale.
+- Attivate come metriche canoniche REST esclusivamente **Distance**, **Duration**, **Acc Events**, **Dec Events**, **Speed Events** e **RPE**, preservando `NULL` per RPE assente.
+- Mantenute inattive **Max Speed**, **Distance 19.8–25.2 km/h**, **Distance >25.2 km/h**, **Anaerobic Threshold Zone**, **High Intensity Training** e le metriche provider sconosciute. Max Speed resta sospesa finché l'unità non sarà confermata; le speed zones richiedono mapping dinamico per Team/stagione in una release successiva.
+- Validati live Full Sync REST, persistenza atomica e idempotenza sulla TeamSession 143261: 27 AthleteSession, 27 Track, 162 KPI REST v2 e 27 membership nella stagione 2026/2027.
+- Nessuna migrazione: `SCHEMA_VERSION` resta 12. Il database Excel incluso è rimasto byte-identico e la compatibilità Streamlit Cloud è preservata.
+
 ## PAS v4.14.0 - 2026-08-11
 
 - Semplificata la pagina Strumenti → PAS Connect con una vista principale dedicata al flusso quotidiano: sorgente, connessione, Team/stagione/date/TeamSession, Full Sync e riepilogo sintetico dell'ultimo risultato.

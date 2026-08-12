@@ -1,0 +1,39 @@
+{
+  "general": {"id": 143261, "nature": "TRAINING", "team": 469},
+  "header": {
+    "athletes": 27,
+    "category": "TRAINING",
+    "drills": [["ANONYMIZED", "ANONYMIZED"]],
+    "match": {
+      "cycle": "ANONYMIZED",
+      "last_match": {"days": "ANONYMIZED", "team": "ANONYMIZED"},
+      "next_match": {"days": "ANONYMIZED", "team": "ANONYMIZED"}
+    },
+    "notes": "",
+    "start_timestamp": "2026-01-01T10:00:00Z",
+    "tags": [],
+    "total_time": "01:20:00",
+    "weather": {"description": "ANONYMIZED", "humidity": 50, "temp": 20.0, "timestamp": "2026-01-01T10:00:00Z"}
+  },
+  "timing": {
+    "created_on": "2026-01-01T12:00:00Z", "day": "2026-01-01",
+    "duration": "01:20:00", "end_time": "11:20:00",
+    "end_timestamp": "2026-01-01T11:20:00Z", "start_time": "10:00:00",
+    "start_timestamp": "2026-01-01T10:00:00Z", "total_time": "01:20:00",
+    "union_duration": 4800.0, "updated_on": "2026-01-01T12:00:00Z"
+  },
+  "category": {"id": 1, "name": "TRAINING"},
+  "tags": {"dictionary": {}, "ids": []},
+  "drill": {"count": 1, "enabled": true, "number": null},
+  "status": {
+    "KPI_completed": true, "completed": true, "details_ready": true,
+    "hasTrackReady": true, "has_rpe": false, "has_waitingtracks": false,
+    "is_gk": false, "is_loaded": true, "is_stats_valid": true
+  },
+  "counts": {"n_tracks": 27},
+  "table_data": {
+    "headers": [{"label": "athlete"}, {"label": "distance"}],
+    "athlete_sessions": [{"id": 910001, "athlete": {"id": 810001}, "state": "READY", "values": ["ANONYMIZED", 1000.0]}],
+    "averages": [["ANONYMIZED", 1000.0]]
+  }
+}

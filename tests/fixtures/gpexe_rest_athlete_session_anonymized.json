@@ -1,0 +1,21 @@
+{
+  "id": 910001, "athlete": 810001, "track": 710001, "teamsession": 143261,
+  "categories": 1, "drill": null, "ground": null,
+  "created_on": "2026-01-01T12:00:00Z", "updated_on": "2026-01-01T12:00:00Z",
+  "start_date": "2026-01-01T10:00:00Z", "end_date": "2026-01-01T11:20:00Z",
+  "state": "READY", "starter": false, "is_stats_valid": true, "need_reprocess": false,
+  "duration": 4800.0, "total_time": 4800.0, "distance": 6200.5,
+  "acceleration_events": 42, "deceleration_events": 39, "speed_events": 18,
+  "relative_speed_events": 11, "rpe": null, "max_values_speed": 8.4,
+  "average_v": 80.1, "average_p": 10.2, "anaerobic_energy": 123.4,
+  "speed_zones": [
+    {"zone_number": 1, "lower_bound": null, "upper_bound": 10.0, "distance": 1000.0, "time": 900.0},
+    {"zone_number": 2, "lower_bound": 10.0, "upper_bound": 15.0, "distance": 900.0, "time": 700.0}
+  ],
+  "relative_speed_zones": [{"zone_number": 1, "lower_bound": 0.0, "upper_bound": null, "distance": 800.0, "time": 600.0}],
+  "acc_zones": [{"zone_number": 1, "lower_bound": 2.0, "upper_bound": null, "distance": 120.0, "time": 30.0}],
+  "dec_zones": [{"zone_number": 1, "lower_bound": null, "upper_bound": -2.0, "distance": 110.0, "time": 28.0}],
+  "power_zones": [{"zone_number": 1, "lower_bound": null, "upper_bound": 20.0, "distance": 700.0, "time": 500.0}],
+  "cardio_zones": [{"zone_number": 1, "lower_bound": null, "upper_bound": 120.0, "distance": 600.0, "time": 400.0}],
+  "tags": []
+}

@@ -21,9 +21,11 @@ def test_gpexe_provider_does_not_filter_with_hellas_roster():
     assert "load_pas_performance_frame" in gpexe
 
 
-def test_full_sync_entry_point_cannot_reactivate_rest_implicitly():
+def test_full_sync_entry_point_requires_explicit_transport_without_fallback():
     sync = (ROOT / "pas_connect" / "sync.py").read_text(encoding="utf-8")
     body = sync[sync.index("def run_full_sync("):]
     assert "run_graphql_sync" in body
+    assert "run_rest_sync" in body
+    assert 'request.transport.upper() == "REST"' in body
     assert "sync_reference_data(client)" not in body
     assert "richiede Team, stagione e intervallo espliciti" in body

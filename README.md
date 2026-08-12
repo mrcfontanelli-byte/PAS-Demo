@@ -1,3 +1,13 @@
+## PAS v4.15.0 — GPExe Official REST API Integration
+
+PAS Connect integra l'API REST v2 ufficiale GPExe come transport esplicito del Full Sync. Nell'area **Opzioni GPExe** è possibile selezionare **REST ufficiale** oppure **GraphQL legacy/internal**; i due percorsi restano separati e non effettuano fallback automatici tra loro o verso Excel.
+
+Il Full Sync REST autentica tramite il contratto ufficiale, costruisce in memoria il bundle TeamSession → AthleteSession → Track → KPI, ne verifica la readiness e pubblica soltanto bundle `READY` con transazione atomica, rollback e UPSERT idempotenti. Gli stati `INCOMPLETE`, `FAILED` e HTTP 202 `processing/not ready` non vengono pubblicati. L'esecuzione iniziale è seriale, rispetta il limite ufficiale di 40 richieste/minuto e conserva `Retry-After` senza polling aggressivo. Run history e riepilogo dell'ultimo sync indicano sempre il transport utilizzato.
+
+Le metriche canoniche REST attive sono **Distance**, **Duration**, **Acc Events**, **Dec Events**, **Speed Events** e **RPE**; un RPE assente resta `NULL`. Restano volutamente inattive **Max Speed**, **Distance 19.8–25.2 km/h**, **Distance >25.2 km/h**, **Anaerobic Threshold Zone**, **High Intensity Training** e le metriche provider sconosciute. L'unità REST di Max Speed non è ancora confermata contrattualmente; le speed zones GPExe hanno soglie dinamiche specifiche per Team e saranno mappate nel contesto Team/stagione in una release successiva.
+
+La persistenza mantiene provenance `REST v2`, contesto Team/stagione e membership atleta–Team–stagione. Lo schema PAS Connect resta alla versione 12, GraphQL rimane disponibile come percorso legacy/internal selezionabile ed è preservata la compatibilità Streamlit Cloud.
+
 ## PAS v4.14.0 — Semplificazione PAS Connect UI/UX
 
 La pagina **Strumenti → PAS Connect** separa ora l'uso quotidiano dalle funzioni tecniche. La vista principale mantiene sorgente dati, stato e comandi di connessione GPExe, contesto Team/stagione/date/TeamSession, sincronizzazione completa e riepilogo sintetico dell'ultimo sync. Le configurazioni e i recuperi operativi meno frequenti sono raccolti in **Opzioni GPExe**; cataloghi, Developer Tools, tracing e dettagli GraphQL in **Avanzate / Diagnostica**; i quattro flussi REST storici restano disabilitati e raccolti in **Legacy — sola lettura**.

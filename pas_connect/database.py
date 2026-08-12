@@ -1409,17 +1409,21 @@ class PASConnectDatabase:
         return inserted, updated, tracks_count, kpis_count
 
     def create_sync_run(self, context: Mapping[str, Any]) -> int:
-        """Apre un tentativo GraphQL senza modificare i dati prestazionali."""
+        """Apre un tentativo provider-neutral senza modificare i dati prestazionali."""
         self.initialize()
         started_at = str(context.get("started_at") or datetime.now(timezone.utc).isoformat())
+        transport = str(context.get("transport") or "graphql").strip().lower()
+        if transport not in {"graphql", "rest"}:
+            raise ValueError(f"Transport sync non valido: {transport}")
+        resource_group = f"{transport}_session_sync"
         with self.connect() as connection:
             cursor = connection.execute(
                 """INSERT INTO gpexe_sync_runs(
                 resource_group, started_at, status, provider, team_id, season, mode,
                 date_from, date_to, requested_count, retry_of_run_id
-                ) VALUES('graphql_session_sync', ?, 'running', 'gpexe', ?, ?, ?, ?, ?, ?, ?)""",
+                ) VALUES(?, ?, 'running', 'gpexe', ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    started_at, context.get("team_id"), context.get("season"),
+                    resource_group, started_at, context.get("team_id"), context.get("season"),
                     context.get("mode"), context.get("date_from"), context.get("date_to"),
                     int(context.get("requested_count") or 0), context.get("retry_of_run_id"),
                 ),
@@ -1501,7 +1505,9 @@ class PASConnectDatabase:
             ).fetchone() is None:
                 return []
             rows = connection.execute(
-                "SELECT r.* FROM gpexe_session_sync_results r" + where
+                "SELECT r.*, u.resource_group AS transport_resource "
+                "FROM gpexe_session_sync_results r "
+                "JOIN gpexe_sync_runs u ON u.id=r.sync_run_id" + where
                 + " ORDER BY r.id DESC", values,
             ).fetchall()
             return [dict(row) for row in rows]
@@ -1513,33 +1519,44 @@ class PASConnectDatabase:
             if row["status"] in {"FAILED", "PARTIAL"}
         ]
 
-    def latest_ready_session_ids(self, *, team_id: int | None = None) -> list[int]:
+    def latest_ready_session_ids(
+        self, *, team_id: int | None = None, transport: str | None = None,
+    ) -> list[int]:
         """Restituisce sessioni con almeno un bundle READY, anche dopo un refresh fallito."""
         if not self.path.is_file():
             return []
         params: list[Any] = []
         team_clause = ""
         if team_id is not None:
-            team_clause = " AND team_id=?"
+            team_clause = " AND r.team_id=?"
             params.append(int(team_id))
+        transport_clause = ""
+        if transport is not None:
+            normalized = str(transport).strip().lower()
+            if normalized not in {"graphql", "rest"}:
+                raise ValueError(f"Transport sync non valido: {transport}")
+            transport_clause = " AND u.resource_group=?"
+            params.append(f"{normalized}_session_sync")
         with self.connect() as connection:
             if connection.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='gpexe_session_sync_results'"
             ).fetchone() is None:
                 return []
             rows = connection.execute(
-                """SELECT DISTINCT provider_session_id FROM gpexe_session_sync_results
-                WHERE readiness='READY' AND status IN ('SUCCESS','SKIPPED')""" + team_clause,
+                """SELECT DISTINCT r.provider_session_id FROM gpexe_session_sync_results r
+                JOIN gpexe_sync_runs u ON u.id=r.sync_run_id
+                WHERE r.readiness='READY' AND r.status IN ('SUCCESS','SKIPPED')"""
+                + team_clause + transport_clause,
                 params,
             ).fetchall()
             return [int(row[0]) for row in rows]
 
-    def upsert_graphql_team_session_bundle(
+    def upsert_team_session_bundle(
         self, team_session: Mapping[str, Any], athletes: list[Mapping[str, Any]],
         sessions: list[Mapping[str, Any]], *, replace_kpis: bool = True,
         season: str | None = None,
     ) -> tuple[int, int, int]:
-        """Pubblica un bundle TeamSession completo in una sola transazione.
+        """Pubblica un bundle provider-neutral completo in una sola transazione.
 
         KPI precedenti vengono sostituiti soltanto se l'intero bundle arriva al
         commit. Un bundle strutturale incompleto non sostituisce mai KPI già
@@ -1676,8 +1693,17 @@ class PASConnectDatabase:
                         connection.execute(
                             "DELETE FROM gpexe_athlete_session_kpis WHERE provider_athlete_session_id=?", (session_id,),
                         )
-                        for source, key in (("identifierKpi", "identifier_kpi"), ("kpi", "kpi")):
-                            for position, kpi in enumerate(row.get(key) or []):
+                        provider_kpis = row.get("provider_kpis")
+                        if isinstance(provider_kpis, list):
+                            kpi_groups = ((None, provider_kpis),)
+                        else:
+                            kpi_groups = tuple(
+                                (source, row.get(key) or [])
+                                for source, key in (("identifierKpi", "identifier_kpi"), ("kpi", "kpi"))
+                            )
+                        for default_source, kpis in kpi_groups:
+                            for position, kpi in enumerate(kpis):
+                                source = str(kpi.get("source") or default_source or "provider")
                                 connection.execute(
                                     """INSERT INTO gpexe_athlete_session_kpis(
                                     provider_athlete_session_id, source, position, name, value,
@@ -1692,6 +1718,17 @@ class PASConnectDatabase:
             except Exception:
                 connection.rollback()
                 raise
+
+    def upsert_graphql_team_session_bundle(
+        self, team_session: Mapping[str, Any], athletes: list[Mapping[str, Any]],
+        sessions: list[Mapping[str, Any]], *, replace_kpis: bool = True,
+        season: str | None = None,
+    ) -> tuple[int, int, int]:
+        """Alias compatibile per il percorso GraphQL esistente."""
+        return self.upsert_team_session_bundle(
+            team_session, athletes, sessions,
+            replace_kpis=replace_kpis, season=season,
+        )
 
     def athlete_session_detail_count(self) -> int:
         if not self.path.is_file():
