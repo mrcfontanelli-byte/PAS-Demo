@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 from .database import PASConnectDatabase
 from .rest_service import RESTBundleResult
+from .rest_mapper import SPEED_ZONE_FAMILY
 
 REST_KPI_SOURCE = "rest_v2"
 APPROVED_CANONICAL_METRICS = {
@@ -36,9 +37,12 @@ class GPExeRESTPersistenceGate:
             )
         if not str(season).strip():
             raise ValueError("Stagione obbligatoria per la persistenza REST.")
-        parent, athletes, sessions = self._adapt_bundle(result.bundle)
+        normalized_season = str(season).strip()
+        parent, athletes, sessions = self._adapt_bundle(result.bundle, season=normalized_season)
         session_count, track_count, kpi_count = self.database.upsert_team_session_bundle(
-            parent, athletes, sessions, replace_kpis=True, season=str(season).strip(),
+            parent, athletes, sessions, replace_kpis=True,
+            replace_kpi_sources={REST_KPI_SOURCE, "rest_v2_speed_zone"},
+            season=normalized_season,
         )
         return RESTPersistenceResult(
             True, "READY", int(parent["provider_session_id"]),
@@ -46,7 +50,7 @@ class GPExeRESTPersistenceGate:
         )
 
     def _adapt_bundle(
-        self, bundle: Mapping[str, Any],
+        self, bundle: Mapping[str, Any], *, season: str | None = None,
     ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
         if bundle.get("provider_contract") != "rest_v2":
             raise ValueError("Il gate accetta esclusivamente bundle REST v2.")
@@ -92,6 +96,38 @@ class GPExeRESTPersistenceGate:
                     "group": metric.get("canonical_metric"), "uom": metric.get("unit"),
                     "unit": metric.get("unit"), "provider_contract": "rest_v2",
                     "provenance": metric.get("provenance"), "raw": metric.get("raw"),
+                })
+            for zone in (row.get("zones") or {}).get("speed_zones") or []:
+                if not zone.get("active") or zone.get("metric_family") != SPEED_ZONE_FAMILY:
+                    continue
+                provider_kpis.append({
+                    "source": "rest_v2_speed_zone",
+                    "name": zone["canonical_metric"], "value": zone.get("value"),
+                    "group": SPEED_ZONE_FAMILY, "uom": zone.get("value_unit"),
+                    "unit": zone.get("value_unit"), "provider_contract": "rest_v2",
+                    "provenance": zone.get("provenance"),
+                    "raw": {
+                        "metric_family": "speed_zone_distance",
+                        "provider": "gpexe", "provider_contract": "rest_v2",
+                        "provider_metric_name": zone.get("provider_name"),
+                        "provider_zone_number": zone.get("provider_zone_number"),
+                        "context_snapshot": {
+                            "team_id": int(team["team_id"]), "season": season,
+                            "team_session_id": provider_session_id,
+                            "athlete_session_id": int(row["provider_athlete_session_id"]),
+                        },
+                        "threshold_snapshot": {
+                            "original_lower_bound_mps": zone.get("original_lower_bound_mps"),
+                            "original_upper_bound_mps": zone.get("original_upper_bound_mps"),
+                            "canonical_lower_bound_kmh": zone.get("canonical_lower_bound_kmh"),
+                            "canonical_upper_bound_kmh": zone.get("canonical_upper_bound_kmh"),
+                            "provider_threshold_unit": zone.get("provider_threshold_unit"),
+                            "canonical_threshold_unit": zone.get("canonical_threshold_unit"),
+                            "value_unit": zone.get("value_unit"),
+                        },
+                        "raw_provider_zone": zone.get("raw"),
+                        "provenance": zone.get("provenance"),
+                    },
                 })
             sessions.append({
                 "provider_athlete_session_id": int(row["provider_athlete_session_id"]),

@@ -1,5 +1,17 @@
 # Changelog
 
+## PAS v4.16.0 - 2026-08-13
+
+- Introdotto il mapping dinamico delle **GPExe Speed Zone Distance** dai bounds REST reali, con conversione delle soglie da `m/s` a `km/h` e label canoniche contestuali a Team e stagione.
+- Aggiunto lo snapshot storico per metrica con bounds originali e canonici, unità provider/canoniche, contesto Team/Season/TeamSession/AthleteSession, `metric_family` e `provider_zone_number` conservato esclusivamente come provenance.
+- Resa l'identità delle speed zone indipendente da `zone_number` e ordine del payload; bounds coincidenti producono la stessa identità, mentre configurazioni differenti restano semanticamente separate.
+- Distinte esplicitamente le soglie legacy `19.8–25.2 km/h` / `>25.2 km/h` dalle soglie `20–25 km/h` / `>25 km/h`, senza interpolazione o ricostruzione parziale. La compatibilità Excel è consentita soltanto per bounds esattamente coincidenti.
+- Implementato il replacement KPI source-aware: REST sostituisce soltanto `rest_v2` e `rest_v2_speed_zone`, mentre GraphQL sostituisce soltanto `identifierKpi` e `kpi`; le source esterne restano preservate con transazione atomica e rollback.
+- Validata live la persistenza della TeamSession 121408 con 138 KPI `rest_v2` e 92 `rest_v2_speed_zone`, e della TeamSession 143261 con 162 KPI `rest_v2` e 135 `rest_v2_speed_zone`, senza duplicati e con isolamento cross-session.
+- Il secondo publish live di idempotenza su 143261 è stato impedito esclusivamente da HTTP 202 `processing/not ready` provider-side; idempotenza e source isolation restano coperte dai test automatici.
+- Validato per una release successiva il contratto `max_values_speed`: provider `m/s`, canonico **Max Speed** in `km/h`, conversione `×3.6`, accumulation `max`. La metrica resta intenzionalmente inattiva in v4.16.0.
+- Nessuna migrazione: `SCHEMA_VERSION` resta 12. Nessuna modifica a statistiche o consumer UI; il database Excel incluso resta byte-identico.
+
 ## PAS v4.15.0 - 2026-08-13
 
 - Integrata l'API REST v2 ufficiale GPExe con autenticazione dedicata e client separato dal percorso GraphQL legacy/internal.

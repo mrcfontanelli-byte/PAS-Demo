@@ -39,25 +39,28 @@ def test_real_configurable_bounds_do_not_equal_pas_thresholds():
     assert 7.0 * 3.6 == 25.2
 
 
-def test_exact_and_open_ended_bounds_stay_inactive_without_explicit_units():
+def test_exact_and_open_ended_bounds_become_dynamic_metrics():
     zones = map_rest_zones(_payload([
         {"zone_number": 91, "lower_bound": 5.5, "upper_bound": 7.0,
          "distance": 321.0, "time": 20.0},
         {"zone_number": 17, "lower_bound": 7.0, "upper_bound": None,
          "distance": 45.0, "time": 4.0},
     ]))["speed_zones"]
-    assert [(z["lower_bound"], z["upper_bound"]) for z in zones] == [(5.5, 7.0), (7.0, None)]
-    assert all(z["unit"] is None and z["canonical_metric"] is None and not z["active"] for z in zones)
+    assert [(z["lower_bound"], z["upper_bound"]) for z in zones] == [(19.8, 25.2), (25.2, None)]
+    assert [z["display_label"] for z in zones] == [
+        "Distance 19.8–25.2 km/h (m)", "Distance >25.2 km/h (m)",
+    ]
+    assert all(z["unit"] == "m" and z["active"] for z in zones)
 
 
-def test_missing_or_different_zones_never_create_pas_metrics():
+def test_missing_or_different_zones_keep_exact_dynamic_identity():
     missing = map_rest_zones(_payload([]))["speed_zones"]
     different = map_rest_zones(_payload([
         {"zone_number": 3, "lower_bound": 5.555555555555555,
          "upper_bound": 6.944444444444445, "distance": 100.0, "time": 10.0},
     ]))["speed_zones"]
     assert missing == []
-    assert different[0]["canonical_metric"] is None
+    assert different[0]["canonical_metric"] == "speed_zone_distance:km/h:20:25"
     assert different[0]["distance"] == 100.0
 
 

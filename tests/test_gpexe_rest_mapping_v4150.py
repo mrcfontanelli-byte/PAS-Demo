@@ -135,21 +135,20 @@ def test_max_speed_and_unknown_provider_metrics_are_preserved_but_inactive(athle
     assert by_name["high_intensity_training"]["active"] is False
 
 
-def test_zones_preserve_bounds_and_wait_for_unit_confirmation(athlete_session):
+def test_zones_preserve_bounds_and_expose_dynamic_speed_descriptor(athlete_session):
     zones = map_rest_zones(athlete_session)
     assert set(zones) == set(ZONE_NAMES)
     speed = zones["speed_zones"][0]
     assert speed["lower_bound"] is None
-    assert speed["upper_bound"] == 10.0
+    assert speed["upper_bound"] == 36.0
     assert speed["distance"] == 1000.0
-    assert speed["unit"] is None
-    assert speed["canonical_metric"] is None
-    assert speed["active"] is False
+    assert speed["threshold_unit"] == "km/h"
+    assert speed["unit"] == "m"
+    assert speed["canonical_metric"] == "speed_zone_distance:km/h::36"
+    assert speed["display_label"] == "Distance <36 km/h (m)"
+    assert speed["active"] is True
     assert speed["raw"] == athlete_session["speed_zones"][0]
-    assert all(
-        zone["canonical_metric"] is None and zone["active"] is False
-        for zone in zones["speed_zones"]
-    )
+    assert all(zone["metric_family"] == "Speed Zone Distance" for zone in zones["speed_zones"])
 
 
 def test_complete_rest_athlete_session_mapping_has_raw_provenance(athlete_session):

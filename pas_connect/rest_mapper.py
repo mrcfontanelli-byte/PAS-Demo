@@ -1,6 +1,8 @@
 """Mapping puro del contratto REST GPExe osservato verso strutture canoniche PAS."""
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+import math
 from typing import Any, Mapping
 
 from .exceptions import MappingError
@@ -16,6 +18,11 @@ ACTIVE_CANONICAL_METRICS = {
     "speed_events": "Speed Events", "rpe": "RPE",
 }
 INACTIVE_PROVIDER_METRICS = {"max_values_speed": "Max Speed"}
+SPEED_ZONE_FAMILY = "Speed Zone Distance"
+SPEED_PROVIDER_THRESHOLD_UNIT = "m/s"
+SPEED_THRESHOLD_UNIT = "km/h"
+SPEED_ZONE_VALUE_UNIT = "m"
+SPEED_BOUND_NORMALIZATION_TOLERANCE = Decimal("0.000002")
 NON_METRIC_FIELDS = {
     "id", "athlete", "track", "teamsession", "categories", "drill", "ground",
     "start_date", "end_date", "created_on", "updated_on", "state", "starter",
@@ -95,6 +102,100 @@ def _value_type(value: object) -> str:
     return type(value).__name__
 
 
+def _finite_number(value: object) -> float | None:
+    if value in (None, "") or isinstance(value, bool):
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
+
+
+def _provider_bound(value: object) -> float | None:
+    number = _finite_number(value)
+    return number
+
+
+def speed_bound_mps_to_kmh(value: object) -> float | None:
+    """Converte un bound GPExe m/s in km/h normalizzando solo il rumore numerico."""
+    number = _provider_bound(value)
+    if number is None:
+        return None
+    try:
+        converted = Decimal(str(number)) * Decimal("3.6")
+        nearest_tenth = converted.quantize(Decimal("0.1"))
+        if abs(converted - nearest_tenth) <= SPEED_BOUND_NORMALIZATION_TOLERANCE:
+            converted = nearest_tenth
+        else:
+            converted = converted.quantize(Decimal("0.000001"))
+        return float(converted.normalize())
+    except InvalidOperation:
+        return None
+
+
+def _format_bound(value: float) -> str:
+    return format(Decimal(str(value)).normalize(), "f")
+
+
+def speed_zone_metric_key(lower_bound: float | None, upper_bound: float | None) -> str:
+    lower = "" if lower_bound is None else _format_bound(lower_bound)
+    upper = "" if upper_bound is None else _format_bound(upper_bound)
+    return f"speed_zone_distance:{SPEED_THRESHOLD_UNIT}:{lower}:{upper}"
+
+
+def speed_zone_label(lower_bound: float | None, upper_bound: float | None) -> str:
+    if lower_bound is None and upper_bound is not None:
+        interval = f"<{_format_bound(upper_bound)}"
+    elif upper_bound is None and lower_bound is not None:
+        interval = f">{_format_bound(lower_bound)}"
+    else:
+        interval = f"{_format_bound(lower_bound)}–{_format_bound(upper_bound)}"
+    return f"Distance {interval} {SPEED_THRESHOLD_UNIT} ({SPEED_ZONE_VALUE_UNIT})"
+
+
+def map_rest_speed_zone(zone: Mapping[str, Any]) -> dict[str, Any]:
+    raw = dict(_mapping(zone, "speed_zones"))
+    original_lower = _provider_bound(raw.get("lower_bound"))
+    original_upper = _provider_bound(raw.get("upper_bound"))
+    lower = speed_bound_mps_to_kmh(original_lower)
+    upper = speed_bound_mps_to_kmh(original_upper)
+    distance = _finite_number(raw.get("distance"))
+    valid_bounds = (lower is not None or upper is not None) and not (
+        lower is not None and upper is not None and lower >= upper
+    )
+    active = valid_bounds and distance is not None
+    return {
+        "provider_name": "speed_zones",
+        "provider_zone_number": raw.get("zone_number"),
+        "zone_number": raw.get("zone_number"),
+        "lower_bound": lower, "upper_bound": upper,
+        "original_lower_bound_mps": original_lower,
+        "original_upper_bound_mps": original_upper,
+        "canonical_lower_bound_kmh": lower,
+        "canonical_upper_bound_kmh": upper,
+        "provider_threshold_unit": SPEED_PROVIDER_THRESHOLD_UNIT,
+        "canonical_threshold_unit": SPEED_THRESHOLD_UNIT,
+        "threshold_unit": SPEED_THRESHOLD_UNIT,
+        "distance": distance, "value": distance, "value_unit": SPEED_ZONE_VALUE_UNIT,
+        "time": raw.get("time"), "unit": SPEED_ZONE_VALUE_UNIT,
+        "metric_family": SPEED_ZONE_FAMILY,
+        "canonical_metric": speed_zone_metric_key(lower, upper) if valid_bounds else None,
+        "display_label": speed_zone_label(lower, upper) if valid_bounds else None,
+        "accumulation": "sum", "active": active,
+        "provenance": PROVENANCE, "raw": raw,
+    }
+
+
+def _speed_zone_sort_key(zone: Mapping[str, Any]) -> tuple[float, float]:
+    lower = zone.get("canonical_lower_bound_kmh")
+    upper = zone.get("canonical_upper_bound_kmh")
+    return (
+        float("-inf") if lower is None else float(lower),
+        float("inf") if upper is None else float(upper),
+    )
+
+
 def map_rest_scalar_kpis(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
     row = _mapping(payload, "AthleteSession detail")
     metrics: list[dict[str, Any]] = []
@@ -121,6 +222,12 @@ def map_rest_zones(payload: Mapping[str, Any]) -> dict[str, list[dict[str, Any]]
         values = row.get(zone_name)
         if not isinstance(values, list):
             raise MappingError(f"{zone_name} REST GPExe deve essere un array.")
+        if zone_name == "speed_zones":
+            result[zone_name] = sorted(
+                (map_rest_speed_zone(_mapping(item, zone_name)) for item in values),
+                key=_speed_zone_sort_key,
+            )
+            continue
         result[zone_name] = [{
             "provider_name": zone_name, "zone_number": zone.get("zone_number"),
             "lower_bound": zone.get("lower_bound"), "upper_bound": zone.get("upper_bound"),

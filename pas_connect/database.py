@@ -1554,6 +1554,7 @@ class PASConnectDatabase:
     def upsert_team_session_bundle(
         self, team_session: Mapping[str, Any], athletes: list[Mapping[str, Any]],
         sessions: list[Mapping[str, Any]], *, replace_kpis: bool = True,
+        replace_kpi_sources: set[str] | frozenset[str] | None = None,
         season: str | None = None,
     ) -> tuple[int, int, int]:
         """Pubblica un bundle provider-neutral completo in una sola transazione.
@@ -1563,6 +1564,13 @@ class PASConnectDatabase:
         validi. Qualunque errore lascia quindi operativo l'ultimo bundle valido.
         """
         self.initialize()
+        owned_sources = None
+        if replace_kpi_sources is not None:
+            owned_sources = frozenset(str(source).strip() for source in replace_kpi_sources if str(source).strip())
+            if not owned_sources:
+                raise ValueError("replace_kpi_sources deve contenere almeno una source.")
+            if not replace_kpis:
+                raise ValueError("replace_kpi_sources richiede replace_kpis=True.")
         synced_at = datetime.now(timezone.utc).isoformat()
         provider_session_id = int(team_session["provider_session_id"])
         with self.connect() as connection:
@@ -1690,9 +1698,6 @@ class PASConnectDatabase:
                         )
                         tracks_count += 1
                     if replace_kpis:
-                        connection.execute(
-                            "DELETE FROM gpexe_athlete_session_kpis WHERE provider_athlete_session_id=?", (session_id,),
-                        )
                         provider_kpis = row.get("provider_kpis")
                         if isinstance(provider_kpis, list):
                             kpi_groups = ((None, provider_kpis),)
@@ -1701,9 +1706,32 @@ class PASConnectDatabase:
                                 (source, row.get(key) or [])
                                 for source, key in (("identifierKpi", "identifier_kpi"), ("kpi", "kpi"))
                             )
-                        for default_source, kpis in kpi_groups:
-                            for position, kpi in enumerate(kpis):
-                                source = str(kpi.get("source") or default_source or "provider")
+                        resolved_kpis = [
+                            (str(kpi.get("source") or default_source or "provider"), kpi)
+                            for default_source, kpis in kpi_groups for kpi in kpis
+                        ]
+                        if owned_sources is not None:
+                            unexpected = {source for source, _ in resolved_kpis} - owned_sources
+                            if unexpected:
+                                raise ValueError(
+                                    "Il bundle contiene KPI fuori dalle source possedute: "
+                                    + ", ".join(sorted(unexpected))
+                                )
+                            placeholders = ",".join("?" for _ in owned_sources)
+                            connection.execute(
+                                f"""DELETE FROM gpexe_athlete_session_kpis
+                                WHERE provider_athlete_session_id=? AND source IN ({placeholders})""",
+                                (session_id, *sorted(owned_sources)),
+                            )
+                        else:
+                            connection.execute(
+                                "DELETE FROM gpexe_athlete_session_kpis WHERE provider_athlete_session_id=?",
+                                (session_id,),
+                            )
+                        positions: dict[str, int] = {}
+                        for source, kpi in resolved_kpis:
+                                position = positions.get(source, 0)
+                                positions[source] = position + 1
                                 connection.execute(
                                     """INSERT INTO gpexe_athlete_session_kpis(
                                     provider_athlete_session_id, source, position, name, value,
@@ -1727,7 +1755,9 @@ class PASConnectDatabase:
         """Alias compatibile per il percorso GraphQL esistente."""
         return self.upsert_team_session_bundle(
             team_session, athletes, sessions,
-            replace_kpis=replace_kpis, season=season,
+            replace_kpis=replace_kpis,
+            replace_kpi_sources={"identifierKpi", "kpi"} if replace_kpis else None,
+            season=season,
         )
 
     def athlete_session_detail_count(self) -> int:

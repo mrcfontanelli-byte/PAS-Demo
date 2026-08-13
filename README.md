@@ -1,3 +1,13 @@
+## PAS v4.16.0 — Dynamic GPExe Speed Threshold Mapping
+
+PAS Connect mappa le **Speed Zone Distance** REST usando i bounds reali restituiti da GPExe per ogni AthleteSession. Le soglie provider vengono conservate in `m/s` e convertite in `km/h` per descriptor e label canonici; lo snapshot storico registra contesto Team/stagione/TeamSession/AthleteSession, bounds originali e canonici, unità e provenance. L'identità della metrica dipende esclusivamente dai bounds canonici, non da `zone_number` o dall'ordine del payload.
+
+Le label sono dinamiche e mantengono separati set semanticamente diversi: `19.8–25.2 km/h` / `>25.2 km/h` non equivalgono a `20–25 km/h` / `>25 km/h`. La compatibilità con le colonne Excel legacy è ammessa soltanto quando i bounds coincidono esattamente; PAS non interpola né ricostruisce zone parziali.
+
+La persistenza REST applica replacement source-aware alle sole source possedute `rest_v2` e `rest_v2_speed_zone`, preservando KPI GraphQL e qualsiasi altra source. Il modello mantiene coesistenza GraphQL/REST, atomicità, rollback, assenza di duplicati e `metric_family` esplicita nello snapshot, senza modificare lo schema PAS Connect 12.
+
+Il contratto REST di `max_values_speed` è stato validato per una release successiva: il valore provider è in `m/s`, la metrica canonica è **Max Speed** in `km/h`, la conversione è `×3.6` e l'accumulation è `max`. **Max Speed resta inattiva in v4.16.0** e questa release non introduce modifiche statistiche o nuove integrazioni UI/consumer.
+
 ## PAS v4.15.0 — GPExe Official REST API Integration
 
 PAS Connect integra l'API REST v2 ufficiale GPExe come transport esplicito del Full Sync. Nell'area **Opzioni GPExe** è possibile selezionare **REST ufficiale** oppure **GraphQL legacy/internal**; i due percorsi restano separati e non effettuano fallback automatici tra loro o verso Excel.

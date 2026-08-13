@@ -11,6 +11,9 @@ from .rest_client import GPExeRESTClient, RESTProcessingResponse
 from .rest_mapper import map_rest_team_session, map_rest_athlete_session_list, map_rest_athlete_session, map_rest_athlete_reference, map_rest_track_reference, map_rest_scalar_kpis, map_rest_zones
 from .rest_service import GPExeRESTService, RESTBundleResult
 from .rest_persistence import GPExeRESTPersistenceGate, RESTPersistenceResult
+from .speed_zone_metrics import (
+    SpeedZoneDistanceDescriptor, aggregate_speed_zone_values, descriptor_from_snapshot,
+)
 from .services import GPExeServices
 from .provider import GPExeAPIDataProvider, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS
 from .storage import SnapshotStore
@@ -40,6 +43,9 @@ __all__ = [
     "RESTBundleResult",
     "GPExeRESTPersistenceGate",
     "RESTPersistenceResult",
+    "SpeedZoneDistanceDescriptor",
+    "aggregate_speed_zone_values",
+    "descriptor_from_snapshot",
     "GPExeServices",
     "GPExeAPIDataProvider",
     "invalidate_team_filter_state",
