@@ -9,6 +9,11 @@ from typing import Any, Iterable
 
 import pandas as pd
 
+from pas_connect.metric_descriptors import (
+    SCALAR_METRICS, descriptor_pas_value, resolve_scalar_metrics,
+)
+from pas_connect.speed_zone_metrics import descriptor_from_snapshot
+
 from modules.session_distance import (
     MISSING_DAY_MESSAGE, TOTAL_SESSION_DRILLS, UNSUPPORTED_DRILL_MESSAGE,
     SessionDistanceError, normalize_athlete_name,
@@ -28,7 +33,7 @@ class OverviewMetric:
 
 
 OVERVIEW_METRICS = (
-    OverviewMetric("RPE", "RPE (CR10)", "RPE", "", "mean"),
+    OverviewMetric("RPE", "RPE (CR10)", "RPE", "", "mean", "rpe", "rpe"),
     OverviewMetric("Anaerobic Threshold Zone (mm:ss)", "Anaerobic threshold zone (hh:mm:ss)",
                    "Anaerobic Threshold Zone", "s", "sum", external_provider="Firstbeat"),
     OverviewMetric("High Intensity Training (mm:ss)", "High intensity training (hh:mm:ss)",
@@ -50,6 +55,32 @@ OVERVIEW_METRICS = (
     OverviewMetric("Speed Events (n°)", "speed events", "Speed Events", "n", "sum",
                    "speed events", "speed_events"),
 )
+
+_OVERVIEW_BY_CANONICAL = {metric.canonical: metric for metric in OVERVIEW_METRICS}
+
+
+def _dynamic_zone_specs(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Costruisce specifiche consumer dalle snapshot REST storiche."""
+    descriptors = {}
+    for row in rows:
+        if str(row.get("source") or "") != "rest_v2_speed_zone":
+            continue
+        try:
+            descriptor = descriptor_from_snapshot(row)
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        descriptors[descriptor.metric_key] = descriptor
+    return {
+        descriptor.label: {
+            "column": descriptor.label, "unit": descriptor.value_unit,
+            "aggregation": descriptor.accumulation, "accumulation": descriptor.accumulation,
+            "decimals": 0, "format": "number", "color": "#F2CF5B",
+            "canonical_key": descriptor.metric_key, "metric_family": descriptor.metric_family,
+            "threshold_lower": descriptor.lower_bound, "threshold_upper": descriptor.upper_bound,
+            "threshold_unit": descriptor.threshold_unit,
+        }
+        for descriptor in sorted(descriptors.values(), key=lambda item: item.sort_key)
+    }
 
 PROFILE_ALIASES = {
     "Distance Z3": frozenset({
@@ -257,14 +288,14 @@ def load_gpexe_day_overview(
     sql = f"""SELECT d.provider_athlete_session_id athlete_session_id,
       d.provider_session_id team_session_id,d.provider_player_id athlete_id,s.team_id,
       s.start_timestamp,COALESCE(a.player_name,'GPExe Athlete '||d.provider_player_id) athlete,
-      d.raw_json,k.source,k.position,k.name,k.value,k.uom
+      d.raw_json detail_raw_json,k.source,k.position,k.name,k.value,k.kpi_group,
+      k.uom,k.unit,k.raw_json kpi_raw_json
       FROM gpexe_athlete_session_details d JOIN gpexe_team_sessions s
       ON s.provider_session_id=d.provider_session_id
       LEFT JOIN gpexe_athletes a ON a.provider_player_id=d.provider_player_id
       LEFT JOIN gpexe_athlete_session_kpis k
       ON k.provider_athlete_session_id=d.provider_athlete_session_id
-      WHERE {' AND '.join(clauses)} ORDER BY d.provider_athlete_session_id,
-      CASE k.source WHEN 'identifierKpi' THEN 0 ELSE 1 END,k.position"""
+      WHERE {' AND '.join(clauses)} ORDER BY d.provider_athlete_session_id,k.source,k.position"""
     with sqlite3.connect(path) as connection:
         resolved_team_id, resolved_season = _resolve_overview_context(
             connection, target, team_id=team_id, session_ids=selected_sessions,
@@ -282,38 +313,53 @@ def load_gpexe_day_overview(
                 profile_kpis[metric.canonical] = str(profile["provider_metric_name"])
     if raw.empty:
         raise SessionDistanceError(MISSING_DAY_MESSAGE)
-    coverage = overview_coverage(
-        path, team_id=resolved_team_id, season=resolved_season, valid_on=target,
-    )
-    verified = {row["Metrica"] for row in coverage if row["Stato"] == "VERIFIED"}
+    zone_specs = _dynamic_zone_specs([
+        {"source": row.source, "raw_json": row.kpi_raw_json}
+        for row in raw.itertuples() if pd.notna(row.source)
+    ])
     records = []
     for athlete_session_id, rows in raw.groupby("athlete_session_id", sort=False):
         first = rows.iloc[0]
         record = {"Date": pd.Timestamp(first["start_timestamp"]), "Athlete": normalize_athlete_name(first["athlete"]),
                   "Athlete ID": first["athlete_id"], "AthleteSession ID": athlete_session_id,
                   "TeamSession ID": first["team_session_id"], "Team ID": first["team_id"], "Source": "GPExe"}
-        values = rows.dropna(subset=["name"]).drop_duplicates("name", keep="first").set_index("name")
-        for metric in OVERVIEW_METRICS:
-            if metric.display not in verified:
-                record[metric.column] = pd.NA
-            elif metric.provider_kpi == "__athlete_total_time__":
-                try: total_time = json.loads(str(first["raw_json"] or "{}")).get("totalTime")
-                except json.JSONDecodeError: total_time = None
-                seconds = duration_seconds(total_time)
-                record[metric.column] = seconds / 60.0 if seconds is not None else pd.NA
-                record["Duration (s)"] = seconds
-            else:
-                provider_kpi = profile_kpis.get(metric.canonical, metric.provider_kpi)
-                if provider_kpi not in values.index:
-                    record[metric.column] = pd.NA
-                    continue
-                value = pd.to_numeric(values.loc[provider_kpi, "value"], errors="coerce")
-                uom = str(values.loc[provider_kpi, "uom"] or "").casefold()
-                if metric.unit == "m" and uom == "km":
-                    value *= 1000.0
-                elif metric.unit == "km/h" and uom in {"m/s", "ms", "mps"}:
-                    value *= 3.6
-                record[metric.column] = value
+        kpi_rows = [
+            {"source": item.source, "position": item.position, "name": item.name,
+             "value": item.value, "kpi_group": item.kpi_group, "uom": item.uom,
+             "unit": item.unit, "raw_json": item.kpi_raw_json}
+            for item in rows.itertuples() if pd.notna(item.name)
+        ]
+        scalar = resolve_scalar_metrics(kpi_rows)
+        for spec in SCALAR_METRICS:
+            metric = _OVERVIEW_BY_CANONICAL.get(spec.canonical_key)
+            if metric is None:
+                continue
+            descriptor = scalar.get(spec.canonical_key)
+            record[metric.column] = descriptor_pas_value(descriptor) if descriptor else pd.NA
+        if pd.isna(record.get("Duration (dec)")):
+            try:
+                detail_raw = json.loads(str(first["detail_raw_json"] or "{}"))
+            except json.JSONDecodeError:
+                detail_raw = {}
+            seconds = duration_seconds(detail_raw.get("totalTime") or detail_raw.get("total_time"))
+            record["Duration (dec)"] = seconds / 60.0 if seconds is not None else pd.NA
+        record["Duration (s)"] = (
+            float(record["Duration (dec)"]) * 60.0
+            if pd.notna(record.get("Duration (dec)")) else pd.NA
+        )
+        for label, spec in zone_specs.items():
+            matches = [item for item in kpi_rows if item["source"] == "rest_v2_speed_zone"
+                       and item["name"] == spec["canonical_key"]]
+            record[label] = pd.to_numeric(matches[0]["value"], errors="coerce") if matches else pd.NA
+        # Compatibilita GraphQL legacy: i profili Z3/Z4 restano disponibili
+        # soltanto quando il contesto non possiede zone REST dinamiche.
+        if not zone_specs:
+            for canonical, provider_name in profile_kpis.items():
+                metric = _OVERVIEW_BY_CANONICAL[canonical]
+                matches = [item for item in kpi_rows if item["name"] == provider_name]
+                record[metric.column] = (
+                    pd.to_numeric(matches[0]["value"], errors="coerce") if matches else pd.NA
+                )
         records.append(record)
     frame = pd.DataFrame(records)
     ids = {str(value) for value in (athlete_ids or [])}
@@ -326,10 +372,14 @@ def load_gpexe_day_overview(
         metric.column: (lambda values: values.sum(min_count=1))
         if metric.aggregation == "sum" else metric.aggregation
         for metric in OVERVIEW_METRICS
+        if metric.column in frame.columns
     }
+    aggregations.update({label: (lambda values: values.sum(min_count=1)) for label in zone_specs})
     aggregations["Duration (s)"] = lambda values: values.sum(min_count=1)
     aggregations.update({"Athlete": "first", "Athlete ID": "first", "Team ID": "first", "Source": "first",
                          "TeamSession ID": lambda values: ",".join(sorted({str(v) for v in values.dropna()}))})
     frame["athlete_key"] = frame.apply(lambda row: f"id:{row['Athlete ID']}" if pd.notna(row["Athlete ID"])
                                        else f"name:{row['Athlete']}", axis=1)
-    return frame.groupby(["Date", "athlete_key"], as_index=False).agg(aggregations).drop(columns="athlete_key")
+    result = frame.groupby(["Date", "athlete_key"], as_index=False).agg(aggregations).drop(columns="athlete_key")
+    result.attrs["dynamic_metric_specs"] = zone_specs
+    return result

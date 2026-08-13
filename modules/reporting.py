@@ -493,7 +493,7 @@ def build_session_report_pdf(
         "RPE",
     ]
     selected_set = set(selected_metrics)
-    selected_metrics = [
+    ordered_static_metrics = [
         name for name in preferred_order
         if name in selected_set
         and name in metric_specs
@@ -502,6 +502,23 @@ def build_session_report_pdf(
             or metric_specs[name]["column"] in different_data.columns
         )
     ]
+    dynamic_metrics = [
+        name for name in selected_metrics
+        if name not in preferred_order
+        and name in metric_specs
+        and metric_specs[name].get("metric_family") == "Speed Zone Distance"
+        and (
+            metric_specs[name]["column"] in data.columns
+            or metric_specs[name]["column"] in different_data.columns
+        )
+    ]
+    dynamic_metrics.sort(key=lambda name: (
+        float("-inf") if metric_specs[name].get("threshold_lower") is None
+        else float(metric_specs[name]["threshold_lower"]),
+        float("inf") if metric_specs[name].get("threshold_upper") is None
+        else float(metric_specs[name]["threshold_upper"]),
+    ))
+    selected_metrics = ordered_static_metrics + dynamic_metrics
     if not selected_metrics:
         raise ValueError("Nessuna metrica disponibile.")
 
@@ -525,6 +542,8 @@ def build_session_report_pdf(
         "Max Speed (km/h)": 1.00,
         "RPE": 0.58,
     }
+    for metric in dynamic_metrics:
+        weights[metric] = 1.00
     labels = {
         "Duration (min)": ("DURATION", "min"),
         "Distance (m)": ("DISTANCE", "m"),
@@ -562,6 +581,9 @@ def build_session_report_pdf(
         "Max Speed (km/h)": ("MAX SPEED", "km/h"),
         "RPE": ("RPE", ""),
     }
+    for metric in dynamic_metrics:
+        label = metric.removeprefix("Distance ").removesuffix(" km/h (m)")
+        labels[metric] = (f"DISTANCE {label}", metric_specs[metric].get("unit", "m"))
 
     # Background and compact header.
     pdf.setFillColor(colors.white)
@@ -793,7 +815,12 @@ def build_session_report_pdf(
             "SPEED EVENTS": ["SPEED EVENTS"],
             "MAX SPEED": ["MAX SPEED"],
             "RPE": ["RPE"],
-        }.get(short, [short])
+        }.get(short)
+        if label_lines is None:
+            label_lines = (
+                ["DISTANCE", short.removeprefix("DISTANCE ")]
+                if short.startswith("DISTANCE ") else [short]
+            )
 
         pdf.setFillColor(colors.white)
         pdf.setFont("Helvetica-Bold", 5.7)

@@ -1,5 +1,19 @@
 # Changelog
 
+## PAS v4.17.0 - 2026-08-13
+
+- Introdotto un resolver centrale di metriche GPExe con descriptor canonico, unità, accumulation, source e provenance; la risoluzione avviene per AthleteSession e canonical metric.
+- Formalizzata la precedence `rest_v2` primaria con fallback `identifierKpi` / `kpi` soltanto quando la riga REST è assente. Una riga REST `NULL` mantiene ownership e non viene sostituita; nessun valore viene sommato o fuso cross-source.
+- Attivato il contratto REST validato di `max_values_speed`: provider `m/s`, canonico **Max Speed** in `km/h`, conversione `×3.6`, accumulation `max`, valore zero valido e provenance completa. Max Speed resta opzionale per la readiness.
+- Proiettati nel DataFrame PAS i sette scalar REST: Distance, Duration, Acc Events, Dec Events, Speed Events, RPE e Max Speed, preservando le colonne consumer esistenti e il percorso Excel.
+- Integrati Panoramica GPExe, Dashboard, Session Report e PDF Session Report con scalar source-aware e Dynamic Speed Zone Distance contestuali, senza aggiungere le zone alle `METRICS` globali.
+- Ricostruite le zone dagli snapshot storici `rest_v2_speed_zone`, ordinate per bounds e visualizzate con label Unicode reali; mantenuta la separazione fra Team 469 (`19.8–25.2` / `>25.2`) e Team 543 (`20–25` / `>25`).
+- Preservata la compatibilità Excel legacy per Z3, Z4 e Max Speed già in km/h, senza reinterpretazione dei bounds o doppia conversione. GraphQL legacy resta fallback deterministico e viene preservato dal replacement source-aware.
+- Documentato il comportamento di migrazione: le sessioni REST sincronizzate prima della v4.17 possono non contenere Max Speed. Non viene eseguito alcun backfill automatico; una futura sincronizzazione REST READY aggiornerà `rest_v2` senza eliminare GraphQL o speed zones.
+- HTTP 202 / `processing` resta uno stato operativo provider-side: PAS non pubblica bundle incompleti. TeamSession 143261 mantiene lo snapshot v4.16 con sei scalar REST finché GPExe non restituirà READY.
+- Restano fuori scope Performance Research avanzata, Performance Model, Period Load, Match Cycle/Report, PAS Intelligence, Load Index, Drills, Forecast ed Exercise Library/Planner.
+- Nessuna migrazione: schema PAS Connect 12. Database Excel incluso byte-identico.
+
 ## PAS v4.16.0 - 2026-08-13
 
 - Introdotto il mapping dinamico delle **GPExe Speed Zone Distance** dai bounds REST reali, con conversione delle soglie da `m/s` a `km/h` e label canoniche contestuali a Team e stagione.

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 from pas_connect.database import SCHEMA_VERSION
 from pas_connect.rest_mapper import map_rest_scalar_kpis, map_rest_zones
 from pas_connect.rest_persistence import APPROVED_CANONICAL_METRICS, GPExeRESTPersistenceGate
@@ -16,14 +18,21 @@ def _payload(speed_zones):
     }
 
 
-def test_max_values_speed_has_no_contract_unit_and_remains_inactive():
+def test_max_values_speed_uses_validated_contract_and_is_active():
     metric = map_rest_scalar_kpis(_payload([]))[0]
     assert metric["provider_name"] == "max_values_speed"
-    assert metric["value"] == 8.4
-    assert metric["unit"] is None
-    assert metric["canonical_metric"] is None
-    assert metric["proposed_canonical_metric"] == "Max Speed"
-    assert metric["active"] is False
+    assert metric["value"] == pytest.approx(30.24)
+    assert metric["provider_unit"] == "m/s"
+    assert metric["unit"] == "km/h"
+    assert metric["canonical_metric"] == "Max Speed"
+    assert metric["accumulation"] == "max"
+    assert metric["active"] is True
+    assert metric["raw"] == {
+        "name": "max_values_speed", "value": 8.4, "type": "number", "unit": "m/s",
+        "provider_metric_name": "max_values_speed", "provider_value": 8.4,
+        "provider_unit": "m/s", "canonical_value": pytest.approx(30.24),
+        "canonical_unit": "km/h", "conversion": "x3.6",
+    }
 
 
 def test_real_configurable_bounds_do_not_equal_pas_thresholds():
@@ -70,9 +79,9 @@ def test_zone_mapping_does_not_select_a_hardcoded_zone_number():
     assert "zone_number] ==" not in source
 
 
-def test_phase_five_keeps_six_persistable_metrics_and_schema_12():
+def test_phase_one_keeps_seven_persistable_metrics_and_schema_12():
     assert APPROVED_CANONICAL_METRICS == {
-        "Distance", "Duration", "Acc Events", "Dec Events", "Speed Events", "RPE",
+        "Distance", "Duration", "Acc Events", "Dec Events", "Speed Events", "RPE", "Max Speed",
     }
     assert SCHEMA_VERSION == 12
     source = inspect.getsource(GPExeRESTPersistenceGate).lower()

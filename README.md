@@ -1,3 +1,19 @@
+## PAS v4.17.0 — GPExe KPI Consumer Integration + Max Speed Activation
+
+PAS integra nei consumer operativi i sette scalar REST ufficiali GPExe: **Distance**, **Duration**, **Acc Events**, **Dec Events**, **Speed Events**, **RPE** e **Max Speed**. Il resolver centrale seleziona una sola source per canonical metric e AthleteSession: `rest_v2` è primaria, mentre `identifierKpi` / `kpi` GraphQL sono fallback soltanto quando la riga REST è assente. Una riga REST presente mantiene ownership anche con valore `NULL`, quindi RPE REST nullo non viene sostituito silenziosamente e non avvengono somme o fusioni cross-source.
+
+Il contratto validato di `max_values_speed` è attivo: il valore provider in `m/s` viene convertito una sola volta in **Max Speed (km/h)** mediante `×3.6`, con accumulation `max` e provenance del valore/unità provider, valore/unità canonici e conversione. Max Speed resta opzionale e la sua assenza non rende incompleto il bundle.
+
+Panoramica GPExe, Dashboard, Session Report e relativo PDF consumano gli scalar REST e le **Dynamic Speed Zone Distance** contestuali. Le zone sono ricostruite dagli snapshot storici `rest_v2_speed_zone`, ordinate per bounds canonici e mostrate con le label reali del Team/Season/TeamSession senza inserirle nelle `METRICS` globali. Restano semanticamente distinti `19.8–25.2` / `>25.2` e `20–25` / `>25`; `zone_number` e ordine del payload non partecipano all'identità.
+
+Excel resta un provider separato: Z3, Z4 e `max speed (km/h)` conservano mapping e unità legacy senza conversioni aggiuntive. GraphQL legacy rimane disponibile come fallback GPExe deterministico e non viene eliminato dal replacement source-aware.
+
+### Migrazione delle sessioni REST storiche
+
+Le TeamSession sincronizzate prima della v4.17.0 possono non contenere Max Speed. Non viene eseguito alcun backfill o migrazione automatica: per acquisirla occorre risincronizzare la singola sessione via REST quando GPExe restituisce `READY`. Il replacement source-aware aggiorna `rest_v2` preservando GraphQL e `rest_v2_speed_zone`. Una risposta HTTP 202 / `processing` è uno stato operativo provider-side: PAS non pubblica dati parziali e consente un nuovo tentativo successivo.
+
+La TeamSession 143261 mantiene quindi lo snapshot v4.16 validato con sei scalar REST; una futura sincronizzazione READY con v4.17 aggiungerà automaticamente Max Speed. Lo schema PAS Connect resta 12.
+
 ## PAS v4.16.0 — Dynamic GPExe Speed Threshold Mapping
 
 PAS Connect mappa le **Speed Zone Distance** REST usando i bounds reali restituiti da GPExe per ogni AthleteSession. Le soglie provider vengono conservate in `m/s` e convertite in `km/h` per descriptor e label canonici; lo snapshot storico registra contesto Team/stagione/TeamSession/AthleteSession, bounds originali e canonici, unità e provenance. L'identità della metrica dipende esclusivamente dai bounds canonici, non da `zone_number` o dall'ordine del payload.

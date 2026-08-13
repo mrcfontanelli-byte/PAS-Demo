@@ -120,14 +120,16 @@ def test_null_rpe_remains_null_and_is_never_zero(athlete_session):
     assert rpe["raw"]["value"] is None
 
 
-def test_max_speed_and_unknown_provider_metrics_are_preserved_but_inactive(athlete_session):
+def test_max_speed_is_canonicalized_and_unknown_provider_metrics_remain_inactive(athlete_session):
     athlete_session["future_provider_metric"] = 12.5
     athlete_session["anaerobic_threshold_zone"] = 4.0
     athlete_session["high_intensity_training"] = 99.0
     by_name = {row["provider_name"]: row for row in map_rest_scalar_kpis(athlete_session)}
-    assert by_name["max_values_speed"]["active"] is False
-    assert by_name["max_values_speed"]["canonical_metric"] is None
-    assert by_name["max_values_speed"]["proposed_canonical_metric"] == "Max Speed"
+    assert by_name["max_values_speed"]["active"] is True
+    assert by_name["max_values_speed"]["canonical_metric"] == "Max Speed"
+    assert by_name["max_values_speed"]["value"] == pytest.approx(30.24)
+    assert by_name["max_values_speed"]["provider_unit"] == "m/s"
+    assert by_name["max_values_speed"]["unit"] == "km/h"
     assert by_name["future_provider_metric"]["active"] is False
     assert by_name["future_provider_metric"]["canonical_metric"] is None
     assert by_name["future_provider_metric"]["value_type"] == "number"

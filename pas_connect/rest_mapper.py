@@ -15,9 +15,17 @@ ZONE_NAMES = (
 ACTIVE_CANONICAL_METRICS = {
     "distance": "Distance", "duration": "Duration",
     "acceleration_events": "Acc Events", "deceleration_events": "Dec Events",
-    "speed_events": "Speed Events", "rpe": "RPE",
+    "speed_events": "Speed Events", "rpe": "RPE", "max_values_speed": "Max Speed",
 }
-INACTIVE_PROVIDER_METRICS = {"max_values_speed": "Max Speed"}
+CANONICAL_ACCUMULATION = {
+    "Distance": "sum", "Duration": "sum", "Acc Events": "sum",
+    "Dec Events": "sum", "Speed Events": "sum", "RPE": "mean", "Max Speed": "max",
+}
+REST_CANONICAL_UNITS = {
+    "Distance": "m", "Duration": "s", "Acc Events": "", "Dec Events": "",
+    "Speed Events": "", "RPE": "", "Max Speed": "km/h",
+}
+INACTIVE_PROVIDER_METRICS: dict[str, str] = {}
 SPEED_ZONE_FAMILY = "Speed Zone Distance"
 SPEED_PROVIDER_THRESHOLD_UNIT = "m/s"
 SPEED_THRESHOLD_UNIT = "km/h"
@@ -150,7 +158,7 @@ def speed_zone_label(lower_bound: float | None, upper_bound: float | None) -> st
     elif upper_bound is None and lower_bound is not None:
         interval = f">{_format_bound(lower_bound)}"
     else:
-        interval = f"{_format_bound(lower_bound)}–{_format_bound(upper_bound)}"
+        interval = f"{_format_bound(lower_bound)}{chr(0x2013)}{_format_bound(upper_bound)}"
     return f"Distance {interval} {SPEED_THRESHOLD_UNIT} ({SPEED_ZONE_VALUE_UNIT})"
 
 
@@ -204,13 +212,31 @@ def map_rest_scalar_kpis(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
             continue
         canonical = ACTIVE_CANONICAL_METRICS.get(name)
         proposed = INACTIVE_PROVIDER_METRICS.get(name)
+        raw_value = value
+        unit = REST_CANONICAL_UNITS.get(canonical)
+        provider_unit = None
+        conversion = None
+        if name == "max_values_speed":
+            provider_unit = "m/s"
+            conversion = "x3.6"
+            number = _finite_number(value)
+            value = number * 3.6 if number is not None else None
         value_type = _value_type(value)
+        raw = {"name": str(name), "value": raw_value, "type": _value_type(raw_value), "unit": provider_unit}
+        if name == "max_values_speed":
+            raw.update({
+                "provider_metric_name": str(name), "provider_value": raw_value,
+                "provider_unit": provider_unit, "canonical_value": value,
+                "canonical_unit": unit, "conversion": conversion,
+            })
         metrics.append({
             "provider_name": str(name), "value": value, "value_type": value_type,
-            "unit": None, "canonical_metric": canonical,
+            "unit": unit, "provider_unit": provider_unit, "conversion": conversion,
+            "canonical_metric": canonical,
+            "accumulation": CANONICAL_ACCUMULATION.get(canonical),
             "proposed_canonical_metric": proposed, "active": canonical is not None,
             "provenance": PROVENANCE,
-            "raw": {"name": str(name), "value": value, "type": value_type, "unit": None},
+            "raw": raw,
         })
     return metrics
 

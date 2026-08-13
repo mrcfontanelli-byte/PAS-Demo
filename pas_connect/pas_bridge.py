@@ -9,6 +9,9 @@ from typing import Iterable
 import pandas as pd
 
 from modules.data_mapping import map_gpexe_metrics
+from .metric_descriptors import SCALAR_METRICS, descriptor_pas_value, resolve_scalar_metrics
+
+_SCALAR_SPEC_BY_CANONICAL = {spec.canonical_key: spec for spec in SCALAR_METRICS}
 
 
 def _duration_minutes(value: object) -> float | None:
@@ -337,6 +340,23 @@ def load_pas_performance_frame(
     with sqlite3.connect(path) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute(sql, params).fetchall()
+        athlete_session_ids = tuple({int(row["provider_athlete_session_id"]) for row in rows})
+        kpis_by_athlete_session: dict[int, list[dict[str, object]]] = {
+            athlete_session_id: [] for athlete_session_id in athlete_session_ids
+        }
+        if athlete_session_ids:
+            placeholders = ",".join("?" for _ in athlete_session_ids)
+            kpi_rows = connection.execute(
+                f"""SELECT provider_athlete_session_id, source, position, name, value,
+                    kpi_group, uom, unit, raw_json
+                FROM gpexe_athlete_session_kpis
+                WHERE provider_athlete_session_id IN ({placeholders})
+                  AND source IN ('rest_v2', 'identifierKpi', 'kpi')
+                ORDER BY provider_athlete_session_id, source, position""",
+                athlete_session_ids,
+            ).fetchall()
+            for kpi in kpi_rows:
+                kpis_by_athlete_session[int(kpi["provider_athlete_session_id"])].append(dict(kpi))
     records: list[dict[str, object]] = []
     warnings: list[str] = []
     for row in rows:
@@ -344,6 +364,11 @@ def load_pas_performance_frame(
         detail_metrics = json.loads(row["detail_metrics_json"] or "{}")
         combined = {**raw_metrics, **detail_metrics}
         mapped = map_gpexe_metrics(combined, require_core=False)
+        descriptors = resolve_scalar_metrics(
+            kpis_by_athlete_session.get(int(row["provider_athlete_session_id"]), ())
+        )
+        for canonical, descriptor in descriptors.items():
+            mapped[_SCALAR_SPEC_BY_CANONICAL[canonical].pas_column] = descriptor_pas_value(descriptor)
         if mapped.get("distance (m)") is None:
             warnings.append(f"Athlete Session {row['provider_athlete_session_id']}: Distance assente")
             continue
@@ -369,6 +394,10 @@ def load_pas_performance_frame(
             "RPE (CR10)": pd.NA,
             "GPExe TeamSession ID": int(row["provider_session_id"]),
             "GPExe AthleteSession ID": int(row["provider_athlete_session_id"]),
+            "GPExe KPI Provenance": {
+                canonical: dict(descriptor.provenance or {})
+                for canonical, descriptor in descriptors.items()
+            },
         }
         record.update(mapped)
         records.append(record)

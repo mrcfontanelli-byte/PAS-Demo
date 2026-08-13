@@ -28,7 +28,13 @@ def _ready(team_session_id=143261, team_id=15, athlete_id=701, session_id=801, t
         _metric("deceleration_events", "Dec Events", 11),
         _metric("speed_events", "Speed Events", 9),
         _metric("rpe", "RPE", None),
-        _metric("max_values_speed", None, 31.2, active=False),
+        {
+            **_metric("max_values_speed", "Max Speed", 27.0),
+            "unit": "km/h", "provider_unit": "m/s", "conversion": "x3.6",
+            "raw": {"provider_metric_name": "max_values_speed", "provider_value": 7.5,
+                    "provider_unit": "m/s", "canonical_value": 27.0,
+                    "canonical_unit": "km/h", "conversion": "x3.6"},
+        },
         _metric("provider_extra", None, 7, active=False),
     ]
     athlete_session = {
@@ -70,11 +76,11 @@ def test_ready_is_persisted_idempotently_without_duplicates(tmp_path):
     first = gate.publish(_ready(), season="2025/26")
     second = gate.publish(_ready(), season="2025/26")
     assert first.published and second.published
-    assert (first.athlete_sessions_count, first.tracks_count, first.kpis_count) == (1, 1, 6)
+    assert (first.athlete_sessions_count, first.tracks_count, first.kpis_count) == (1, 1, 7)
     assert _count(db, "gpexe_team_sessions") == 1
     assert _count(db, "gpexe_athlete_session_details") == 1
     assert _count(db, "gpexe_tracks") == 1
-    assert _count(db, "gpexe_athlete_session_kpis") == 6
+    assert _count(db, "gpexe_athlete_session_kpis") == 7
 
 
 @pytest.mark.parametrize("status,processing", [("INCOMPLETE", False), ("FAILED", False), ("INCOMPLETE", True)])
@@ -142,7 +148,8 @@ def test_rpe_null_unknown_inactive_and_rest_provenance(tmp_path):
         ).fetchone()[0])
     assert {row["source"] for row in rows} == {"rest_v2"}
     assert {row["name"] for row in rows} == {
-        "distance", "duration", "acceleration_events", "deceleration_events", "speed_events", "rpe"
+        "distance", "duration", "acceleration_events", "deceleration_events", "speed_events", "rpe",
+        "max_values_speed",
     }
     assert next(row["value"] for row in rows if row["name"] == "rpe") is None
     assert detail_raw["provider_contract"] == "rest_v2"

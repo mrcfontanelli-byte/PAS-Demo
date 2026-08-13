@@ -129,6 +129,17 @@ def test_null_rpe_is_preserved_without_making_bundle_incomplete():
     assert rpe["active"] is True
 
 
+def test_missing_optional_max_speed_does_not_make_bundle_incomplete():
+    client = complete_client(1)
+    del client.details[910001]["max_values_speed"]
+    result = GPExeRESTService(client).build_team_session_bundle(143261)
+    assert result.status == "READY"
+    assert not any(
+        metric["provider_name"] == "max_values_speed"
+        for metric in result.bundle["athlete_sessions"][0]["kpis"]
+    )
+
+
 def test_unknown_metric_is_preserved_but_inactive():
     client = complete_client(1)
     client.details[910001]["future_metric"] = 12.5

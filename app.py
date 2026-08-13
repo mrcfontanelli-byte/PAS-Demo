@@ -9477,6 +9477,21 @@ if dashboard_uses_gpexe_distance:
         dashboard_distance_error = str(exc)
         dashboard_gpexe_overview_error = str(exc)
 
+dashboard_contextual_metric_specs = dict(METRICS)
+dashboard_dynamic_metric_specs = dashboard_gpexe_overview_current.attrs.get(
+    "dynamic_metric_specs", {}
+)
+if dashboard_uses_gpexe_distance:
+    gpexe_scalar_columns = {
+        "distance (m)", "Duration (dec)", "acc events", "dec events",
+        "speed events", "RPE (CR10)", "max speed (km/h)",
+    }
+    dashboard_contextual_metric_specs = {
+        name: spec for name, spec in METRICS.items()
+        if spec.get("column") in gpexe_scalar_columns
+    }
+    dashboard_contextual_metric_specs.update(dashboard_dynamic_metric_specs)
+
 # ---------------------------------------------------------
 # 3. PANORAMICA
 # ---------------------------------------------------------
@@ -9501,8 +9516,8 @@ if overview_mode == "Player Overview":
 
 overview_metric_names = st.sidebar.multiselect(
     "Metriche della panoramica",
-    list(METRICS.keys()),
-    default=list(METRICS.keys()),
+    list(dashboard_contextual_metric_specs.keys()),
+    default=list(dashboard_contextual_metric_specs.keys()),
     key="dashboard_overview_metrics",
 )
 
@@ -9519,8 +9534,8 @@ session_report_title = st.sidebar.text_input(
 
 session_report_metrics = st.sidebar.multiselect(
     "Metriche nel Professional Session Report",
-    list(METRICS.keys()),
-    default=list(METRICS.keys()),
+    list(dashboard_contextual_metric_specs.keys()),
+    default=list(dashboard_contextual_metric_specs.keys()),
     help=(
         "Il report utilizza un unico foglio A4 orizzontale "
         "con Team Average, Full Training e Different Training."
@@ -9552,6 +9567,10 @@ session_report_data = aggregate_player_day(
 session_report_different_data = aggregate_player_day(
     session_different_training_raw
 )
+
+if dashboard_uses_gpexe_distance and not dashboard_gpexe_overview_current.empty:
+    session_report_data = dashboard_gpexe_overview_current.copy()
+    session_report_different_data = pd.DataFrame(columns=session_report_data.columns)
 
 session_report_available_players = sorted(
     set(
@@ -9664,7 +9683,7 @@ if st.sidebar.button(
                 session_data=session_report_data,
                 different_training_data=session_report_different_data,
                 selected_metrics=session_report_metrics,
-                metric_specs=METRICS,
+                metric_specs=dashboard_contextual_metric_specs,
                 report_title=session_report_title,
                 session_context=session_context,
                 percentage_data=(
@@ -9976,6 +9995,9 @@ historical = historical_similar_days(
     same_cycle_length=same_cycle_length,
 )
 
+if dashboard_dynamic_metric_specs:
+    metric_groups["Speed Zone Distance"] = list(dashboard_dynamic_metric_specs)
+
 metric_reference_rows = []
 
 overview_label = (
@@ -10139,7 +10161,7 @@ else:
         )
 
         for column, overview_name in zip(columns, visible_metrics):
-            meta = METRICS[overview_name]
+            meta = dashboard_contextual_metric_specs[overview_name]
             overview_column = meta["column"]
             overview_unit = meta["unit"]
             overview_decimals = int(meta.get("decimals", 0))
@@ -10441,15 +10463,18 @@ with st.expander("Tabella statistica completa", expanded=False):
 
 with st.expander("Verifica valori del giorno per atleta", expanded=False):
     verification_columns = ["Athlete"] + [
-        METRICS[name]["column"]
+        dashboard_contextual_metric_specs[name]["column"]
         for name in overview_metric_names
-        if name in METRICS
+        if name in dashboard_contextual_metric_specs
     ]
-    verification = current_players[verification_columns].copy()
+    verification_source = (
+        dashboard_gpexe_overview_current if dashboard_uses_gpexe_distance else current_players
+    )
+    verification = verification_source[verification_columns].copy()
     rename_map = {
-        METRICS[name]["column"]: name
+        dashboard_contextual_metric_specs[name]["column"]: name
         for name in overview_metric_names
-        if name in METRICS
+        if name in dashboard_contextual_metric_specs
     }
     verification = verification.rename(columns=rename_map)
     verification_display = verification.astype("object").copy()
@@ -11049,8 +11074,10 @@ if selected_players and not period_player_day.empty:
     player_deviations = []
     for player in selected_players:
         for overview_name in overview_metric_names:
-            meta = METRICS[overview_name]
+            meta = dashboard_contextual_metric_specs[overview_name]
             overview_column = meta["column"]
+            if overview_column not in period_player_day.columns:
+                continue
             team_mean = period_player_day[overview_column].mean()
             player_mean = period_player_day.loc[
                 period_player_day["Athlete"].eq(player), overview_column

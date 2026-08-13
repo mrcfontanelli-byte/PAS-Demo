@@ -10,7 +10,7 @@ from .rest_mapper import SPEED_ZONE_FAMILY
 
 REST_KPI_SOURCE = "rest_v2"
 APPROVED_CANONICAL_METRICS = {
-    "Distance", "Duration", "Acc Events", "Dec Events", "Speed Events", "RPE",
+    "Distance", "Duration", "Acc Events", "Dec Events", "Speed Events", "RPE", "Max Speed",
 }
 
 
