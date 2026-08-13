@@ -2885,8 +2885,24 @@ with database_column:
             gpexe_api_database = PASConnectDatabase.default(base_dir).path
             gpexe_api_has_sessions = gpexe_api_database.is_file() and bool(available_sessions(gpexe_api_database))
             prefer_gpexe_api = st.session_state.get("pas_gpexe_input_mode", "API sincronizzata") == "API sincronizzata"
+            if "pas_gpexe_active_session_ids" not in st.session_state:
+                initial_contexts = available_contexts(gpexe_api_database)
+                initial_context_index = int(st.session_state.get("pas_gpexe_local_context_index", 0) or 0)
+                initial_context = (
+                    initial_contexts[initial_context_index]
+                    if 0 <= initial_context_index < len(initial_contexts) else None
+                )
+                st.session_state["pas_gpexe_active_session_ids"] = [
+                    int(item["provider_session_id"])
+                    for item in available_sessions(
+                        gpexe_api_database,
+                        team_id=int(initial_context["team_id"]) if initial_context else None,
+                        season=str(initial_context["season"]) if initial_context else None,
+                        ready_only=bool(initial_context),
+                    )
+                ]
             selected_api_sessions = st.session_state.get("pas_gpexe_active_session_ids", [])
-            gpexe_api_ready = gpexe_api_has_sessions and has_compatible_performance_rows(
+            gpexe_api_ready = bool(selected_api_sessions) and gpexe_api_has_sessions and has_compatible_performance_rows(
                 gpexe_api_database,
                 session_ids=selected_api_sessions,
             )
@@ -3102,6 +3118,8 @@ with settings_column:
                     )
                     selected_local_team = int(api_contexts[context_index]["team_id"])
                     selected_local_season = str(api_contexts[context_index]["season"])
+                    st.session_state["pas_gpexe_local_team_id"] = selected_local_team
+                    st.session_state["pas_gpexe_local_season"] = selected_local_season
                     st.session_state["pas_gpexe_context_athletes"] = available_athletes(
                         api_database_path,
                         team_id=selected_local_team,
@@ -3115,22 +3133,27 @@ with settings_column:
                     if api_sessions:
                         session_by_id = {int(item["provider_session_id"]): item for item in api_sessions}
                         session_options = tuple(session_by_id)
-                        defaults = [sid for sid in st.session_state.get("pas_gpexe_active_session_ids", []) if sid in session_by_id]
+                        session_key = "pas_gpexe_active_session_ids"
+                        st.session_state[session_key] = [
+                            int(sid) for sid in st.session_state.get(session_key, session_options)
+                            if int(sid) in session_by_id
+                        ]
                         selected_ids = st.multiselect(
                             "TeamSession locali attive nel PAS",
                             options=session_options,
-                            default=defaults,
                             format_func=lambda sid: (
                                 f"{str(session_by_id[sid].get('start_timestamp') or '')[:10]} · "
                                 f"{session_by_id[sid].get('session_name') or sid}"
                             ),
-                            key="pas_gpexe_active_session_ids",
-                            help="Senza selezione vengono utilizzate tutte le TeamSession già memorizzate localmente.",
+                            key=session_key,
+                            help="Seleziona una o più TeamSession locali da usare nel Dashboard.",
                         )
                         st.success(
                             f"Dati GPExe READY disponibili: {len(api_sessions)} TeamSession · "
-                            f"{len(selected_ids) or len(api_sessions)} selezionate."
+                            f"{len(selected_ids)} selezionate."
                         )
+                        if not selected_ids:
+                            st.info("Seleziona almeno una TeamSession locale per usare i dati GPExe.")
                     else:
                         st.info("Nessuna TeamSession GPExe presente nel database PAS Connect locale.")
                 if st.session_state.get("pas_gpexe_input_mode") == "File export":
@@ -9350,6 +9373,14 @@ if page == "🏥 Return To Play":
 # -------------------------
 # FILTRI
 # -------------------------
+if (
+    requested_provider_id == "gpexe"
+    and st.session_state.get("pas_gpexe_input_mode", "API sincronizzata") == "API sincronizzata"
+    and not st.session_state.get("pas_gpexe_active_session_ids", [])
+):
+    st.info("Seleziona almeno una TeamSession locale per usare i dati GPExe.")
+    st.stop()
+
 st.sidebar.header("Filtri Dashboard")
 
 available_dates = sorted(raw["Date"].dt.date.unique())
@@ -9367,10 +9398,21 @@ default_reference_date = (
 # ---------------------------------------------------------
 st.sidebar.subheader("Seduta")
 
+reference_date_key = "dashboard_reference_date"
+current_reference_date = st.session_state.get(
+    reference_date_key, default_reference_date
+)
+try:
+    current_reference_date = pd.Timestamp(current_reference_date).date()
+except (TypeError, ValueError):
+    current_reference_date = default_reference_date
+if current_reference_date not in available_dates_set:
+    current_reference_date = default_reference_date
+st.session_state[reference_date_key] = current_reference_date
+
 reference_date = st.sidebar.date_input(
     "Giorno da analizzare",
-    value=st.session_state.get("dashboard_reference_date", default_reference_date),
-    key="dashboard_reference_date",
+    key=reference_date_key,
     min_value=available_dates[0],
     max_value=available_dates[-1],
     format="DD/MM/YYYY",
@@ -9453,15 +9495,11 @@ dashboard_gpexe_overview_current = pd.DataFrame(
 dashboard_gpexe_overview_error = None
 if dashboard_uses_gpexe_distance:
     try:
-        dashboard_teams = st.session_state.get("pas_gpexe_teams", [])
-        dashboard_team_index = int(st.session_state.get("pas_gpexe_selected_team_index", 0) or 0)
-        dashboard_team = (
-            dashboard_teams[dashboard_team_index]
-            if dashboard_teams and 0 <= dashboard_team_index < len(dashboard_teams)
-            else {}
-        )
-        dashboard_team_id = dashboard_team.get("id") if isinstance(dashboard_team, dict) else None
         dashboard_session_ids = st.session_state.get("pas_gpexe_active_session_ids", [])
+        dashboard_team_id = (
+            st.session_state.get("pas_gpexe_local_team_id")
+            if dashboard_session_ids else None
+        )
         dashboard_gpexe_overview_current = get_data_provider("gpexe").load_day_overview_data(
             PASConnectDatabase.default(base_dir).path,
             reference_ts,
@@ -9491,6 +9529,11 @@ if dashboard_uses_gpexe_distance:
         if spec.get("column") in gpexe_scalar_columns
     }
     dashboard_contextual_metric_specs.update(dashboard_dynamic_metric_specs)
+    if "dashboard_overview_metrics" in st.session_state:
+        st.session_state["dashboard_overview_metrics"] = [
+            name for name in st.session_state["dashboard_overview_metrics"]
+            if name in dashboard_contextual_metric_specs
+        ]
 
 # ---------------------------------------------------------
 # 3. PANORAMICA
@@ -9508,11 +9551,18 @@ overview_mode = st.sidebar.radio(
 overview_player = None
 if overview_mode == "Player Overview":
     all_players = sorted(raw["Athlete"].dropna().unique())
-    overview_player = st.sidebar.selectbox(
-        "Giocatore della panoramica",
-        all_players,
-        key="dashboard_overview_player",
-    )
+    overview_player_key = "dashboard_overview_player"
+    if st.session_state.get(overview_player_key) not in all_players:
+        if all_players:
+            st.session_state[overview_player_key] = all_players[0]
+        else:
+            st.session_state.pop(overview_player_key, None)
+    if all_players:
+        overview_player = st.sidebar.selectbox(
+            "Giocatore della panoramica",
+            all_players,
+            key=overview_player_key,
+        )
 
 overview_metric_names = st.sidebar.multiselect(
     "Metriche della panoramica",
@@ -9837,11 +9887,17 @@ available_players = sorted(
     day_selected_player_day["Athlete"].dropna().unique()
 )
 
+selected_players_key = "dashboard_selected_players"
+st.session_state[selected_players_key] = [
+    player
+    for player in st.session_state.get(selected_players_key, [])
+    if player in available_players
+]
 selected_players = st.sidebar.multiselect(
     "Giocatori da confrontare",
     available_players,
     default=[],
-    key="dashboard_selected_players",
+    key=selected_players_key,
 )
 
 day_players_mode = st.sidebar.radio(
@@ -9995,9 +10051,6 @@ historical = historical_similar_days(
     same_cycle_length=same_cycle_length,
 )
 
-if dashboard_dynamic_metric_specs:
-    metric_groups["Speed Zone Distance"] = list(dashboard_dynamic_metric_specs)
-
 metric_reference_rows = []
 
 overview_label = (
@@ -10127,6 +10180,8 @@ metric_groups = {
         "Speed Events (n°)",
     ],
 }
+if dashboard_dynamic_metric_specs:
+    metric_groups["Speed Zone Distance"] = list(dashboard_dynamic_metric_specs)
 
 metric_reference_rows = []
 

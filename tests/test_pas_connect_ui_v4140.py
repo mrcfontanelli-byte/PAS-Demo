@@ -12,7 +12,7 @@ def _app_source() -> str:
 def test_release_version_and_pas_connect_panels_are_declared_in_target_order():
     app = _app_source()
     version = (ROOT / "modules" / "version.py").read_text(encoding="utf-8")
-    assert 'APP_BUILD_VERSION = "4.17.0"' in version
+    assert 'APP_BUILD_VERSION = "4.17.1"' in version
 
     markers = (
         'pas_connect_main = st.container()',
@@ -134,6 +134,30 @@ def test_existing_streamlit_state_keys_are_not_duplicated():
     )
     for key in keys:
         assert app.count(f'key="{key}"') == 1
+
+
+def test_local_sessions_default_to_explicit_selection_and_dashboard_uses_local_team():
+    app = _app_source()
+    assert 'if "pas_gpexe_active_session_ids" not in st.session_state:' in app
+    assert 'session_key = "pas_gpexe_active_session_ids"' in app
+    assert 'default=defaults' not in app
+    assert 'f"{len(selected_ids)} selezionate."' in app
+    assert 'f"{len(selected_ids) or len(api_sessions)} selezionate."' not in app
+    assert 'Seleziona almeno una TeamSession locale per usare i dati GPExe.' in app
+    assert 'gpexe_api_ready = bool(selected_api_sessions)' in app
+    assert 'st.session_state["pas_gpexe_local_team_id"] = selected_local_team' in app
+    assert 'st.session_state["pas_gpexe_local_season"] = selected_local_season' in app
+    assert 'st.session_state.get("pas_gpexe_local_team_id")' in app
+    assert 'if dashboard_session_ids else None' in app
+
+
+def test_dashboard_player_widget_state_is_normalized_to_current_options():
+    app = _app_source()
+    assert 'selected_players_key = "dashboard_selected_players"' in app
+    assert 'if player in available_players' in app
+    assert 'overview_player_key = "dashboard_overview_player"' in app
+    assert 'if st.session_state.get(overview_player_key) not in all_players:' in app
+    assert 'st.session_state[overview_player_key] = all_players[0]' in app
 
 
 def test_ui_release_does_not_change_client_or_legacy_service_engines():

@@ -1,4 +1,4 @@
-"""Versione unica della release PAS v4.17.0."""
+"""Versione unica della release PAS v4.17.1."""
 
-APP_BUILD_VERSION = "4.17.0"
+APP_BUILD_VERSION = "4.17.1"
 APP_EDITION = "Demo"

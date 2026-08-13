@@ -1,27 +1,28 @@
 PAS RELEASE MANIFEST
-Version: 4.16.0
-Source archive: PAS_DEMO_v4.16.0.zip
+Version: 4.17.1
+Source archive: PAS_DEMO_v4.17.1.zip
 Build date: 2026-08-13
 
 IMPLEMENTATION
-- Dynamic GPExe Speed Zone Distance mapping from provider bounds.
-- REST threshold conversion from m/s to canonical km/h labels.
-- Historical Team/Season/TeamSession/AthleteSession threshold snapshots.
-- Source-aware replacement for REST and GraphQL KPI ownership.
-- Exact-bound Excel compatibility and semantic isolation between threshold sets.
-- Max Speed contract validated for a later release but inactive in v4.16.0.
+- GPExe REST-only performance frame compatibility with Dashboard consumers.
+- Stable Athlete label fallback: real name, player_name, technical provider ID.
+- Player Selector and Player Overview state normalization across contexts.
+- Calendar and TeamSession multiselect normalization for local REST sessions.
+- Dynamic Speed Zone Distance and persisted Max Speed available to Dashboard.
 
 UNCHANGED
-- PAS statistics and existing UI/consumer behavior.
+- PAS statistics and Excel semantics.
 - PAS Connect schema version 12.
 - Included Excel database contents.
 - Streamlit Cloud compatibility.
 
 VERIFICATION
-- Targeted v4.16.0 tests: 45 passed.
-- Full automated suite: 350 passed.
+- Targeted v4.17.1 tests: 64 passed.
+- Full automated suite: 374 passed.
 - Python compileall and clean app import: OK.
 - validate_release.py and git diff --check: OK.
 - SQLite integrity_check: ok.
+- PAS Connect database SHA-256:
+  339e66d1e2709463b2efc6291a335e08c3147de514f14d00cb77c5f0dbe023f8
 - Included Excel database SHA-256:
   9efa8e9ccfcb6bcff55b5f73407fc1b9e449c3a0633ee8f5a525d5a72d63010b

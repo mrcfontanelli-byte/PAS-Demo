@@ -1,3 +1,13 @@
+## PAS v4.17.1 — GPExe REST-only Dashboard Bridge Compatibility
+
+PAS collega correttamente alla Dashboard le TeamSession GPExe composte esclusivamente da dati REST persistiti, anche in assenza delle righe legacy. Il performance frame mantiene le colonne consumer esistenti e assegna a ogni atleta una label stabile con precedenza: nome e cognome reali, `player_name`, quindi fallback tecnico `GPEXE ATHLETE <id>`.
+
+Player Selector e Player Overview usano ancora la colonna `Athlete`, ora popolata per tutte le AthleteSession REST-only. Le selezioni non più valide vengono rimosse quando cambiano provider o contesto; anche data Dashboard e selezione TeamSession vengono normalizzate sulle opzioni locali correnti. Team Overview, calendario e semantica dei filtri esistenti restano invariati.
+
+Dynamic Speed Zone Distance continua a usare gli snapshot contestuali già integrati. Quando `max_values_speed` è persistita, il Dashboard espone Max Speed in `km/h` con conversione unica dal valore REST in `m/s`. La TeamSession 143261 validata contiene 27 AthleteSession, 27 Track, 189 KPI `rest_v2`, 135 KPI `rest_v2_speed_zone`, 324 KPI totali e Max Speed valorizzata 27/27 senza duplicati.
+
+Excel resta una sorgente separata e conserva integralmente struttura, dati e semantica legacy; questa release non introduce migrazioni o modifiche Excel.
+
 ## PAS v4.17.0 — GPExe KPI Consumer Integration + Max Speed Activation
 
 PAS integra nei consumer operativi i sette scalar REST ufficiali GPExe: **Distance**, **Duration**, **Acc Events**, **Dec Events**, **Speed Events**, **RPE** e **Max Speed**. Il resolver centrale seleziona una sola source per canonical metric e AthleteSession: `rest_v2` è primaria, mentre `identifierKpi` / `kpi` GraphQL sono fallback soltanto quando la riga REST è assente. Una riga REST presente mantiene ownership anche con valore `NULL`, quindi RPE REST nullo non viene sostituito silenziosamente e non avvengono somme o fusioni cross-source.

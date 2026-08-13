@@ -188,11 +188,23 @@ at = AppTest.from_file("app.py")
 at.session_state["pas_demo_authenticated"] = True
 at.session_state["pas_navigation"] = "🏠 Dashboard"
 at.session_state["pas_data_source"] = "gpexe"
-at.session_state["dashboard_reference_date"] = date(2025, 7, 30)
+at.session_state["dashboard_reference_date"] = date(2026, 5, 23)
 at.session_state["dashboard_selected_drill"] = "Full Training"
-at.session_state["pas_gpexe_active_session_ids"] = []
+at.session_state["pas_gpexe_active_session_ids"] = [143261]
+at.session_state["dashboard_overview_mode"] = "Player Overview"
+at.session_state["dashboard_overview_player"] = "STALE EXCEL PLAYER"
+at.session_state["dashboard_selected_players"] = ["STALE EXCEL PLAYER"]
 at.run(timeout=60)
 assert not at.exception, [str(item.value) for item in at.exception]
+assert at.session_state["dashboard_reference_date"] == date(2026, 7, 31)
+assert at.session_state["dashboard_overview_player"] != "STALE EXCEL PLAYER"
+assert at.session_state["dashboard_selected_players"] == []
+player_selectors = [item for item in at.multiselect if item.label == "Giocatori da confrontare"]
+assert len(player_selectors) == 1
+assert len(player_selectors[0].options) == 27
+overview_players = [item for item in at.selectbox if item.label == "Giocatore della panoramica"]
+assert len(overview_players) == 1
+assert len(overview_players[0].options) == 27
 cards = [
     str(item.value) for item in at.markdown
     if "Distance (m)" in str(item.value) and "pas-card-value" in str(item.value)
@@ -201,7 +213,7 @@ assert len(cards) == 1
 assert "pas-card-value\">N/D" not in cards[0]
 assert "pas-card-accumulation-value" not in cards[0]
 assert not any("Nessun giocatore disponibile" in str(item.value) for item in at.info)
-assert any("24 atleti" in str(item.value) for item in at.success)
+assert any("27 atleti" in str(item.value) for item in at.success)
 print("GP_EXE_DASHBOARD_RUNTIME_OK")
 '''
     result = subprocess.run(

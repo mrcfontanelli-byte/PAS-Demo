@@ -153,3 +153,12 @@ def test_session_pdf_accepts_unicode_dynamic_labels(tmp_path):
     assert pdf.startswith(b"%PDF-")
     assert len(pdf) > 1000
     assert list(specs) == [bounded, open_ended]
+
+
+def test_dynamic_metric_group_is_created_after_base_groups():
+    app = (__import__("pathlib").Path(__file__).parents[1] / "app.py").read_text(encoding="utf-8")
+    base_groups = app.index("metric_groups = {")
+    dynamic_group = app.index(
+        'metric_groups["Speed Zone Distance"] = list(dashboard_dynamic_metric_specs)'
+    )
+    assert base_groups < dynamic_group

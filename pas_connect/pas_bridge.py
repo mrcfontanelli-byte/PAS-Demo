@@ -8,7 +8,7 @@ from typing import Iterable
 
 import pandas as pd
 
-from modules.data_mapping import map_gpexe_metrics
+from modules.data_mapping import CANONICAL_METRICS, map_gpexe_metrics
 from .metric_descriptors import SCALAR_METRICS, descriptor_pas_value, resolve_scalar_metrics
 
 _SCALAR_SPEC_BY_CANONICAL = {spec.canonical_key: spec for spec in SCALAR_METRICS}
@@ -324,22 +324,57 @@ def load_pas_performance_frame(
     sql = f"""
         SELECT r.provider_session_id, r.provider_athlete_session_id,
                r.athlete_first_name, r.athlete_last_name, r.athlete_role,
+               p.player_name,
                r.state AS athlete_state, r.metrics_json,
                s.session_name, s.start_timestamp, s.end_timestamp, s.total_time,
-               s.category_id, s.state AS session_state,
+               s.category_id, s.state AS session_state, s.team_id,
                d.category_name,
-               a.starter, a.duration, a.metrics_json AS detail_metrics_json
+               a.provider_player_id, a.starter, a.duration,
+               a.metrics_json AS detail_metrics_json, 'GPExe' AS source
         FROM gpexe_session_athlete_rows r
         JOIN gpexe_team_sessions s ON s.provider_session_id=r.provider_session_id
         LEFT JOIN gpexe_team_session_details d ON d.provider_session_id=r.provider_session_id
         LEFT JOIN gpexe_athlete_session_details a
           ON a.provider_athlete_session_id=r.provider_athlete_session_id
+        LEFT JOIN gpexe_athletes p
+          ON p.provider_player_id=a.provider_player_id
         {where}
         ORDER BY s.start_timestamp, r.athlete_last_name, r.athlete_first_name
     """
     with sqlite3.connect(path) as connection:
         connection.row_factory = sqlite3.Row
-        rows = connection.execute(sql, params).fetchall()
+        rows = list(connection.execute(sql, params).fetchall())
+        rest_where = where.replace("r.provider_session_id", "a.provider_session_id")
+        rest_rows = connection.execute(
+            f"""SELECT a.provider_session_id, a.provider_athlete_session_id,
+                p.first_name AS athlete_first_name, p.last_name AS athlete_last_name,
+                p.player_name,
+                '' AS athlete_role, a.state AS athlete_state, '{{}}' AS metrics_json,
+                s.session_name, s.start_timestamp, s.end_timestamp, s.total_time,
+                s.category_id, s.state AS session_state, s.team_id,
+                d.category_name, a.provider_player_id, a.starter, a.duration,
+                a.metrics_json AS detail_metrics_json, 'GPExe' AS source
+            FROM gpexe_athlete_session_details a
+            JOIN gpexe_team_sessions s ON s.provider_session_id=a.provider_session_id
+            LEFT JOIN gpexe_team_session_details d
+              ON d.provider_session_id=a.provider_session_id
+            LEFT JOIN gpexe_athletes p
+              ON p.provider_player_id=a.provider_player_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM gpexe_session_athlete_rows r
+                WHERE r.provider_session_id=a.provider_session_id
+                  AND r.provider_athlete_session_id=a.provider_athlete_session_id
+            )
+            {('AND ' + rest_where.removeprefix('WHERE ')) if rest_where else ''}
+            AND EXISTS (
+                SELECT 1 FROM gpexe_athlete_session_kpis k
+                WHERE k.provider_athlete_session_id=a.provider_athlete_session_id
+                  AND k.source IN ('rest_v2', 'identifierKpi', 'kpi')
+            )
+            ORDER BY s.start_timestamp, a.provider_athlete_session_id""",
+            params,
+        ).fetchall()
+        rows.extend(rest_rows)
         athlete_session_ids = tuple({int(row["provider_athlete_session_id"]) for row in rows})
         kpis_by_athlete_session: dict[int, list[dict[str, object]]] = {
             athlete_session_id: [] for athlete_session_id in athlete_session_ids
@@ -373,7 +408,14 @@ def load_pas_performance_frame(
             warnings.append(f"Athlete Session {row['provider_athlete_session_id']}: Distance assente")
             continue
         start = pd.to_datetime(row["start_timestamp"], errors="coerce")
-        athlete = f"{row['athlete_first_name'] or ''} {row['athlete_last_name'] or ''}".strip().upper()
+        full_name = (
+            f"{row['athlete_first_name'] or ''} {row['athlete_last_name'] or ''}"
+        ).strip()
+        athlete = (
+            full_name
+            or str(row["player_name"] or "").strip()
+            or f"GPExe Athlete {row['provider_player_id']}"
+        ).upper()
         record: dict[str, object] = {
             "Date": start.normalize() if pd.notna(start) else pd.NaT,
             "Athlete": athlete,
@@ -392,6 +434,9 @@ def load_pas_performance_frame(
             "Anaerobic threshold zone (hh:mm:ss)": pd.NA,
             "High intensity training (hh:mm:ss)": pd.NA,
             "RPE (CR10)": pd.NA,
+            "Athlete ID": row["provider_player_id"],
+            "Team ID": row["team_id"],
+            "Source": row["source"],
             "GPExe TeamSession ID": int(row["provider_session_id"]),
             "GPExe AthleteSession ID": int(row["provider_athlete_session_id"]),
             "GPExe KPI Provenance": {
@@ -404,6 +449,9 @@ def load_pas_performance_frame(
     frame = pd.DataFrame(records)
     if frame.empty:
         raise ValueError("Le sessioni GPExe sincronizzate non contengono righe prestative utilizzabili.")
+    for metric in CANONICAL_METRICS:
+        if metric.pas_column not in frame:
+            frame[metric.pas_column] = pd.NA
     frame = frame.sort_values(["Date", "Athlete"]).reset_index(drop=True)
     frame.attrs.update({
         "source_name": path.name,

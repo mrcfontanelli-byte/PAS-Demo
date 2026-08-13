@@ -1,5 +1,27 @@
 # Changelog
 
+## PAS v4.17.1 - 2026-08-13
+
+### Fixed
+
+- Eliminato il fallback indebito a Excel quando una TeamSession GPExe contiene dati prestativi REST persistiti ma nessuna riga legacy.
+- Impedito che label `Athlete` vuote fondano tutti gli atleti nello stesso `groupby`, lasciando vuoto il Player Selector.
+- Ripristinate 27 opzioni selezionabili nel Player Selector REST-only e normalizzato lo state del Player Overview quando il giocatore precedente non appartiene al contesto corrente.
+- Normalizzata `dashboard_reference_date` sulle date realmente disponibili e corretta la semantica dello stato vuoto del multiselect TeamSession.
+- Corretto l'ordine di inizializzazione di Dynamic Speed Zones e `metric_groups`.
+
+### Improved
+
+- Esteso il performance bridge alle TeamSession REST-only senza righe legacy, mantenendo le colonne consumate dal PAS Core.
+- Aggiunto il fallback source-aware della label atleta: nome reale, `player_name`, quindi `GPEXE ATHLETE <id>`.
+- Normalizzati gli state Dashboard relativi a Player Selector e Player Overview tra provider e contesti differenti.
+
+### Validated
+
+- TeamSession 143261: 27 AthleteSession, 27 Track, 189 KPI `rest_v2`, 135 KPI `rest_v2_speed_zone`, 324 KPI totali, Max Speed 27/27 e zero duplicati.
+- TeamSession 121408 invariata: 23 `identifierKpi`, 299 `kpi`, 138 `rest_v2`, 92 `rest_v2_speed_zone`, 552 KPI totali.
+- Schema PAS Connect invariato alla versione 12 e database Excel incluso byte-identico.
+
 ## PAS v4.17.0 - 2026-08-13
 
 - Introdotto un resolver centrale di metriche GPExe con descriptor canonico, unità, accumulation, source e provenance; la risoluzione avviene per AthleteSession e canonical metric.
