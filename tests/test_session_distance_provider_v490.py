@@ -194,6 +194,9 @@ at.session_state["pas_gpexe_active_session_ids"] = [143261]
 at.session_state["dashboard_overview_mode"] = "Player Overview"
 at.session_state["dashboard_overview_player"] = "STALE EXCEL PLAYER"
 at.session_state["dashboard_selected_players"] = ["STALE EXCEL PLAYER"]
+at.session_state["dashboard_detail_metrics"] = [
+    "Distance (m)", "High Intensity Training (mm:ss)"
+]
 at.run(timeout=60)
 assert not at.exception, [str(item.value) for item in at.exception]
 assert at.session_state["dashboard_reference_date"] == date(2026, 7, 31)
@@ -205,6 +208,33 @@ assert len(player_selectors[0].options) == 27
 overview_players = [item for item in at.selectbox if item.label == "Giocatore della panoramica"]
 assert len(overview_players) == 1
 assert len(overview_players[0].options) == 27
+detail_selectors = [item for item in at.multiselect if item.label == "Metriche per grafici di dettaglio"]
+assert len(detail_selectors) == 1
+team_543_zones = [
+    "Distance <10 km/h (m)", "Distance 10–16 km/h (m)",
+    "Distance 16–20 km/h (m)", "Distance 20–25 km/h (m)",
+    "Distance >25 km/h (m)",
+]
+expected_scalars = [
+    "RPE", "Duration (min)", "Distance (m)", "Acc Events (n°)",
+    "Dec Events (n°)", "Max Speed (km/h)", "Speed Events (n°)",
+]
+assert detail_selectors[0].options == [*expected_scalars, *team_543_zones]
+assert at.session_state["dashboard_detail_metrics"] == ["Distance (m)"]
+
+selected_player = player_selectors[0].options[0]
+at.session_state["dashboard_selected_players"] = [selected_player]
+at.session_state["dashboard_detail_metrics"] = [team_543_zones[1], "Max Speed (km/h)", "RPE"]
+at.run(timeout=60)
+assert not at.exception, [str(item.value) for item in at.exception]
+assert any(team_543_zones[1] in str(item.value) for item in at.markdown)
+assert any("Max Speed (km/h)" in str(item.value) for item in at.markdown)
+assert any(
+    hasattr(item.value, "columns")
+    and "Soggetto" in item.value.columns
+    and "Media Team" in item.value["Soggetto"].astype(str).tolist()
+    for item in at.dataframe
+)
 cards = [
     str(item.value) for item in at.markdown
     if "Distance (m)" in str(item.value) and "pas-card-value" in str(item.value)
@@ -214,6 +244,22 @@ assert "pas-card-value\">N/D" not in cards[0]
 assert "pas-card-accumulation-value" not in cards[0]
 assert not any("Nessun giocatore disponibile" in str(item.value) for item in at.info)
 assert any("27 atleti" in str(item.value) for item in at.success)
+
+from modules.config import METRICS
+team_469_zone = "Distance 14.4–19.8 km/h (m)"
+excel = AppTest.from_file("app.py")
+excel.session_state["pas_demo_authenticated"] = True
+excel.session_state["pas_navigation"] = "🏠 Dashboard"
+excel.session_state["pas_data_source"] = "excel"
+excel.session_state["dashboard_detail_metrics"] = [team_469_zone, "Distance (m)"]
+excel.run(timeout=60)
+assert not excel.exception, [str(item.value) for item in excel.exception]
+detail_selectors = [
+    item for item in excel.multiselect
+    if item.label == "Metriche per grafici di dettaglio"
+]
+assert detail_selectors[0].options == list(METRICS)
+assert excel.session_state["dashboard_detail_metrics"] == ["Distance (m)"]
 print("GP_EXE_DASHBOARD_RUNTIME_OK")
 '''
     result = subprocess.run(
@@ -221,7 +267,7 @@ print("GP_EXE_DASHBOARD_RUNTIME_OK")
         cwd=Path(__file__).resolve().parents[1],
         capture_output=True,
         text=True,
-        timeout=90,
+        timeout=240,
         check=False,
     )
     assert result.returncode == 0, result.stderr

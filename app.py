@@ -9917,11 +9917,18 @@ highlight_overview_player = st.sidebar.checkbox(
 st.sidebar.divider()
 st.sidebar.subheader("Grafici di dettaglio")
 
+detail_metric_options = list(dashboard_contextual_metric_specs.keys())
+detail_metrics_key = "dashboard_detail_metrics"
+st.session_state[detail_metrics_key] = [
+    name
+    for name in st.session_state.get(detail_metrics_key, ["Distance (m)"])
+    if name in detail_metric_options
+]
 detail_metric_names = st.sidebar.multiselect(
     "Metriche per grafici di dettaglio",
-    list(METRICS.keys()),
+    detail_metric_options,
     default=["Distance (m)"],
-    key="dashboard_detail_metrics",
+    key=detail_metrics_key,
     help=(
         "Seleziona le metriche per Historical Reference "
         "e per i grafici con i giocatori."
@@ -10669,6 +10676,14 @@ with st.expander("Verifica accumulo selezionato", expanded=False):
 # -------------------------
 st.subheader("Grafici di dettaglio")
 
+detail_current_players = current_players
+detail_period_player_day = period_player_day
+detail_historical = historical
+if dashboard_uses_gpexe_distance:
+    detail_current_players = dashboard_gpexe_overview_current
+    detail_period_player_day = dashboard_gpexe_overview_current
+    detail_historical = pd.DataFrame()
+
 if not detail_metric_names:
     st.info(
         "Seleziona almeno una metrica nella barra laterale "
@@ -10681,11 +10696,12 @@ else:
     )
 
     for metric_index, metric_name in enumerate(detail_metric_names):
-        metric_meta = METRICS[metric_name]
+        metric_meta = dashboard_contextual_metric_specs[metric_name]
         metric = metric_meta["column"]
         unit = metric_meta["unit"]
         metric_color = metric_meta.get("color")
-        metric_decimal_places = metric_decimals(metric_name)
+        metric_decimal_places = int(metric_meta.get("decimals", 0))
+        metric_format_type = str(metric_meta.get("format", "number"))
 
         if metric_index > 0:
             st.divider()
@@ -10700,25 +10716,25 @@ else:
         # ---------------------------------------------
         if overview_mode == "Team Overview":
             historical_focus = (
-                historical.groupby(
+                detail_historical.groupby(
                     ["Date", "Cycle"],
                     as_index=False,
                 )[metric].mean()
-                if not historical.empty
+                if not detail_historical.empty
                 else pd.DataFrame(
                     columns=["Date", "Cycle", metric]
                 )
             )
-            current_focus_players = current_players.copy()
+            current_focus_players = detail_current_players.copy()
             current_focus_value = (
-                current_players[metric].mean()
-                if not current_players.empty
+                detail_current_players[metric].mean()
+                if not detail_current_players.empty
                 else np.nan
             )
         else:
             historical_focus = (
-                historical.loc[
-                    historical["Athlete"].eq(overview_player),
+                detail_historical.loc[
+                    detail_historical["Athlete"].eq(overview_player),
                     ["Date", "Cycle", metric],
                 ]
                 .groupby(
@@ -10726,16 +10742,16 @@ else:
                     as_index=False,
                 )[metric]
                 .mean()
-                if not historical.empty
+                if not detail_historical.empty
                 else pd.DataFrame(
                     columns=["Date", "Cycle", metric]
                 )
             )
             # Mantieni visibile l’intera distribuzione del giorno anche in Player Overview.
             # Il giocatore scelto viene evidenziato dal grafico tramite selected_players.
-            current_focus_players = current_players.copy()
-            selected_current = current_players[
-                current_players["Athlete"].eq(overview_player)
+            current_focus_players = detail_current_players.copy()
+            selected_current = detail_current_players[
+                detail_current_players["Athlete"].eq(overview_player)
             ]
             current_focus_value = (
                 selected_current[metric].mean()
@@ -10796,7 +10812,7 @@ else:
                     unit=unit,
                     decimals=metric_decimal_places,
                     color=metric_color,
-                    format_type=metric_format(metric_name),
+                    format_type=metric_format_type,
                     selected_players=(
                         [overview_player]
                         if overview_mode == "Player Overview" and overview_player
@@ -10841,21 +10857,22 @@ else:
         for comparison_index, detail_metric_name in enumerate(
             detail_metric_names
         ):
-            detail_meta = METRICS[detail_metric_name]
+            detail_meta = dashboard_contextual_metric_specs[detail_metric_name]
             detail_column = detail_meta["column"]
             detail_unit = detail_meta["unit"]
             detail_color = detail_meta.get("color")
-            detail_decimals = metric_decimals(detail_metric_name)
+            detail_decimals = int(detail_meta.get("decimals", 0))
+            detail_format_type = str(detail_meta.get("format", "number"))
 
             comparison_rows = [{
                 "Label": "Media Team",
-                "Value": period_player_day[detail_column].mean(),
+                "Value": detail_period_player_day[detail_column].mean(),
                 "Type": "Team",
             }]
 
             for comparison_player in selected_players:
-                player_values = period_player_day.loc[
-                    period_player_day["Athlete"].eq(comparison_player),
+                player_values = detail_period_player_day.loc[
+                    detail_period_player_day["Athlete"].eq(comparison_player),
                     detail_column,
                 ]
 
@@ -10888,9 +10905,7 @@ else:
                             detail_unit,
                             color=detail_color,
                             decimals=detail_decimals,
-                            format_type=metric_format(
-                                detail_metric_name
-                            ),
+                            format_type=detail_format_type,
                         )
                     render_reportable_chart(
                         comparison_figure,
@@ -10920,7 +10935,7 @@ else:
                         .map(
                             lambda value: (
                                 f"{fmt_metric(value, detail_metric_name)} "
-                                f"{detail_unit if metric_format(detail_metric_name) != 'duration' else ''}"
+                                f"{detail_unit if detail_format_type != 'duration' else ''}"
                             )
                         )
                     )

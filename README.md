@@ -1,3 +1,9 @@
+## PAS v4.17.2 — GPExe Contextual Detail Metrics
+
+I grafici di dettaglio della Dashboard sono ora provider-aware anche con GPExe e riusano lo stesso catalogo metrico contestuale di Team Overview e Player Overview. In un contesto GPExe il selettore propone i sette scalar disponibili e le Speed Zones dinamiche definite per Team e stagione, con metadata, formati e dataset contestuali coerenti anche nel confronto giocatori e nella Media Team.
+
+Le metriche legacy o Firstbeat non applicabili non vengono proposte quando `source=GPExe`. Lo state `dashboard_detail_metrics` viene normalizzato al cambio di provider o Team, rimuovendo selezioni non più valide. Il percorso Excel, il catalogo `METRICS` e il relativo comportamento restano invariati.
+
 ## PAS v4.17.1 — GPExe REST-only Dashboard Bridge Compatibility
 
 PAS collega correttamente alla Dashboard le TeamSession GPExe composte esclusivamente da dati REST persistiti, anche in assenza delle righe legacy. Il performance frame mantiene le colonne consumer esistenti e assegna a ogni atleta una label stabile con precedenza: nome e cognome reali, `player_name`, quindi fallback tecnico `GPEXE ATHLETE <id>`.

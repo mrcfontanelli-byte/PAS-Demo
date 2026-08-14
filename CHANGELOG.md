@@ -1,5 +1,26 @@
 # Changelog
 
+## PAS v4.17.2 - 2026-08-14
+
+### Fixed
+
+- Corretti i grafici di dettaglio che in contesto GPExe usavano ancora il catalogo globale `METRICS`.
+- Rese selezionabili nei grafici di dettaglio le Speed Zones dinamiche del Team e della stagione correnti.
+- Rimosse dal selettore GPExe le metriche legacy e Firstbeat non disponibili per il provider.
+- Normalizzato lo state `dashboard_detail_metrics` al cambio di provider o Team, eliminando le selezioni stale.
+
+### Improved
+
+- Condiviso il catalogo metrico contestuale tra overview e grafici di dettaglio.
+- Applicati metadata provider-aware e dataset GPExe contestuale ai grafici.
+- Estesi confronto giocatori e Media Team alle metriche contestuali e dinamiche.
+
+### Validated
+
+- Team 543 / TeamSession 143261: 12 opzioni, 7 scalar e 5 zone dinamiche (`<10`, `10–16`, `16–20`, `20–25`, `>25 km/h`).
+- Team 469 / TeamSession 121408: 11 opzioni, 7 scalar e 4 zone dinamiche (`<14.4`, `14.4–19.8`, `19.8–25.2`, `>25.2 km/h`).
+- Percorso Excel invariato.
+
 ## PAS v4.17.1 - 2026-08-13
 
 ### Fixed

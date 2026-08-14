@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pandas as pd
 
@@ -88,6 +89,28 @@ def test_team_469_and_543_dynamic_zones_are_contextual_and_ordered(tmp_path):
     assert not set(labels_469) & set(labels_543)
 
 
+def test_release_team_469_context_exposes_23_players_and_11_detail_options():
+    database_path = PASConnectDatabase.default(Path(__file__).parents[1]).path
+    frame = load_gpexe_day_overview(
+        database_path, "2025-08-03", team_id=469, session_ids=[121408],
+    )
+    scalar_options = [
+        "RPE", "Duration (min)", "Distance (m)", "Acc Events (n°)",
+        "Dec Events (n°)", "Max Speed (km/h)", "Speed Events (n°)",
+    ]
+    zone_options = list(frame.attrs["dynamic_metric_specs"])
+    assert frame["Athlete"].nunique() == 23
+    assert [*scalar_options, *zone_options] == [
+        *scalar_options,
+        "Distance <14.4 km/h (m)",
+        "Distance 14.4–19.8 km/h (m)",
+        "Distance 19.8–25.2 km/h (m)",
+        "Distance >25.2 km/h (m)",
+    ]
+    assert len([*scalar_options, *zone_options]) == 11
+    assert frame[zone_options].notna().all().all()
+
+
 def test_overview_exposes_seven_scalars_without_double_conversion(tmp_path):
     frame = _overview(tmp_path, 543, "2026/2027", 200, 2000, [])
     row = frame.iloc[0]
@@ -162,3 +185,27 @@ def test_dynamic_metric_group_is_created_after_base_groups():
         'metric_groups["Speed Zone Distance"] = list(dashboard_dynamic_metric_specs)'
     )
     assert base_groups < dynamic_group
+
+
+def test_detail_metrics_reuse_contextual_catalog_and_provider_data():
+    app = (__import__("pathlib").Path(__file__).parents[1] / "app.py").read_text(
+        encoding="utf-8"
+    )
+    selector_start = app.index('detail_metric_options = list(')
+    selector_end = app.index('# Le sedute omologhe', selector_start)
+    selector = app[selector_start:selector_end]
+    assert 'dashboard_contextual_metric_specs.keys()' in selector
+    assert 'list(METRICS.keys())' not in selector
+    assert 'detail_metrics_key = "dashboard_detail_metrics"' in selector
+    assert 'if name in detail_metric_options' in selector
+
+    detail_start = app.index('# GRAFICI DI DETTAGLIO MULTI-METRICA')
+    detail_end = app.index('# TREND DEL PERIODO', detail_start)
+    detail = app[detail_start:detail_end]
+    assert 'detail_current_players = dashboard_gpexe_overview_current' in detail
+    assert 'detail_period_player_day = dashboard_gpexe_overview_current' in detail
+    assert 'detail_historical = pd.DataFrame()' in detail
+    assert 'dashboard_contextual_metric_specs[metric_name]' in detail
+    assert 'dashboard_contextual_metric_specs[detail_metric_name]' in detail
+    assert 'METRICS[metric_name]' not in detail
+    assert 'METRICS[detail_metric_name]' not in detail

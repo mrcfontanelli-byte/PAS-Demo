@@ -12,7 +12,7 @@ def _app_source() -> str:
 def test_release_version_and_pas_connect_panels_are_declared_in_target_order():
     app = _app_source()
     version = (ROOT / "modules" / "version.py").read_text(encoding="utf-8")
-    assert 'APP_BUILD_VERSION = "4.17.1"' in version
+    assert 'APP_BUILD_VERSION = "4.17.2"' in version
 
     markers = (
         'pas_connect_main = st.container()',

@@ -1,14 +1,14 @@
 PAS RELEASE MANIFEST
-Version: 4.17.1
-Source archive: PAS_DEMO_v4.17.1.zip
-Build date: 2026-08-13
+Version: 4.17.2
+Source archive: PAS_DEMO_v4.17.2.zip
+Build date: 2026-08-14
 
 IMPLEMENTATION
-- GPExe REST-only performance frame compatibility with Dashboard consumers.
-- Stable Athlete label fallback: real name, player_name, technical provider ID.
-- Player Selector and Player Overview state normalization across contexts.
-- Calendar and TeamSession multiselect normalization for local REST sessions.
-- Dynamic Speed Zone Distance and persisted Max Speed available to Dashboard.
+- Provider-aware detail-chart metric selector backed by the contextual catalog.
+- Dynamic Team/Season Speed Zones available in detail charts.
+- Contextual metadata and GPExe datasets used by charts and player comparison.
+- Team average support for contextual metrics.
+- Detail metric state normalization across provider and Team changes.
 
 UNCHANGED
 - PAS statistics and Excel semantics.
@@ -17,8 +17,8 @@ UNCHANGED
 - Streamlit Cloud compatibility.
 
 VERIFICATION
-- Targeted v4.17.1 tests: 64 passed.
-- Full automated suite: 374 passed.
+- Targeted v4.17.2 tests: 17 passed.
+- Full automated suite: 376 passed.
 - Python compileall and clean app import: OK.
 - validate_release.py and git diff --check: OK.
 - SQLite integrity_check: ok.
