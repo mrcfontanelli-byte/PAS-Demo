@@ -77,7 +77,6 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
 st.markdown(
     """
     <style>
@@ -384,6 +383,14 @@ st.markdown(
         font-size: 2.3rem !important;
         font-weight: 800 !important;
     }
+
+    /* Settings e i menu BaseWeb usano portal fixed separati allo stesso livello.
+       Eleva soltanto il portal che contiene vere option. */
+    body > div[style*="position: fixed"][style*="pointer-events: none"]:has(
+        [data-baseweb="popover"] [role="option"]
+    ) {
+        z-index: 1000061 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -460,6 +467,24 @@ def fmt(value: float, decimals: int = 0) -> str:
     if pd.isna(value):
         return "N/D"
     return f"{value:.{decimals}f}".replace(".", ",")
+
+
+def metric_has_context_values(
+    frame: pd.DataFrame,
+    spec: dict,
+) -> bool:
+    """Una metrica presentazionale e disponibile se ha almeno un numero valido."""
+    column = spec.get("column")
+    if not column or column not in frame.columns:
+        return False
+    return pd.to_numeric(frame[column], errors="coerce").notna().any()
+
+
+def sync_gpexe_session_widget_state(widget_key: str) -> None:
+    """Propaga la selezione del widget contestuale prima del rerun Streamlit."""
+    st.session_state["pas_gpexe_active_session_ids"] = [
+        int(session_id) for session_id in st.session_state.get(widget_key, [])
+    ]
 
 
 def metric_decimals(metric_name: str) -> int:
@@ -2887,11 +2912,23 @@ with database_column:
             prefer_gpexe_api = st.session_state.get("pas_gpexe_input_mode", "API sincronizzata") == "API sincronizzata"
             if "pas_gpexe_active_session_ids" not in st.session_state:
                 initial_contexts = available_contexts(gpexe_api_database)
-                initial_context_index = int(st.session_state.get("pas_gpexe_local_context_index", 0) or 0)
-                initial_context = (
-                    initial_contexts[initial_context_index]
-                    if 0 <= initial_context_index < len(initial_contexts) else None
-                )
+                initial_context_by_key = {
+                    (int(item["team_id"]), str(item["season"])): item
+                    for item in initial_contexts
+                }
+                initial_context_key = st.session_state.get("pas_gpexe_local_context")
+                if initial_context_key not in initial_context_by_key:
+                    legacy_context_key = (
+                        st.session_state.get("pas_gpexe_local_team_id"),
+                        st.session_state.get("pas_gpexe_local_season"),
+                    )
+                    initial_context_key = (
+                        legacy_context_key if legacy_context_key in initial_context_by_key
+                        else next(iter(initial_context_by_key), None)
+                    )
+                    if initial_context_key is not None:
+                        st.session_state["pas_gpexe_local_context"] = initial_context_key
+                initial_context = initial_context_by_key.get(initial_context_key)
                 st.session_state["pas_gpexe_active_session_ids"] = [
                     int(item["provider_session_id"])
                     for item in available_sessions(
@@ -3111,13 +3148,20 @@ with settings_column:
                 selected_local_team = None
                 selected_local_season = None
                 if api_contexts:
-                    context_labels = [f"Team {item['team_id']} · {item['season']}" for item in api_contexts]
-                    context_index = st.selectbox(
-                        "Contesto GPExe locale", range(len(api_contexts)),
-                        format_func=lambda index: context_labels[index], key="pas_gpexe_local_context_index",
+                    context_by_key = {
+                        (int(item["team_id"]), str(item["season"])): item
+                        for item in api_contexts
+                    }
+                    context_options = tuple(context_by_key)
+                    context_key = "pas_gpexe_local_context"
+                    if st.session_state.get(context_key) not in context_by_key:
+                        st.session_state[context_key] = context_options[0]
+                    selected_context = st.selectbox(
+                        "Contesto GPExe locale", context_options,
+                        format_func=lambda value: f"Team {value[0]} · {value[1]}",
+                        key=context_key,
                     )
-                    selected_local_team = int(api_contexts[context_index]["team_id"])
-                    selected_local_season = str(api_contexts[context_index]["season"])
+                    selected_local_team, selected_local_season = selected_context
                     st.session_state["pas_gpexe_local_team_id"] = selected_local_team
                     st.session_state["pas_gpexe_local_season"] = selected_local_season
                     st.session_state["pas_gpexe_context_athletes"] = available_athletes(
@@ -3132,27 +3176,73 @@ with settings_column:
                 if st.session_state.get("pas_gpexe_input_mode") == "API sincronizzata":
                     if api_sessions:
                         session_by_id = {int(item["provider_session_id"]): item for item in api_sessions}
-                        session_options = tuple(session_by_id)
-                        session_key = "pas_gpexe_active_session_ids"
-                        st.session_state[session_key] = [
-                            int(sid) for sid in st.session_state.get(session_key, session_options)
+                        available_session_ids = tuple(session_by_id)
+                        session_option_by_token = {
+                            str(session_id): session_by_id[session_id]
+                            for session_id in available_session_ids
+                        }
+                        available_session_tokens = tuple(session_option_by_token)
+                        canonical_session_key = "pas_gpexe_active_session_ids"
+                        canonical_selected_ids = [
+                            int(sid)
+                            for sid in st.session_state.get(canonical_session_key, [])
                             if int(sid) in session_by_id
                         ]
-                        selected_ids = st.multiselect(
+                        normalized_season = re.sub(
+                            r"[^A-Za-z0-9]+", "_", str(selected_local_season)
+                        ).strip("_") or "season"
+                        session_widget_key = (
+                            f"pas_gpexe_session_selector_{selected_local_team}_"
+                            f"{normalized_season}"
+                        )
+                        previous_context_key = "pas_gpexe_previous_session_context"
+                        current_context = (selected_local_team, selected_local_season)
+                        context_changed = (
+                            st.session_state.get(previous_context_key) != current_context
+                        )
+                        if context_changed or session_widget_key not in st.session_state:
+                            st.session_state[session_widget_key] = [
+                                str(session_id) for session_id in canonical_selected_ids
+                            ]
+                        else:
+                            compatible_widget_tokens = [
+                                str(token)
+                                for token in st.session_state[session_widget_key]
+                                if str(token) in session_option_by_token
+                            ]
+                            if compatible_widget_tokens != st.session_state[session_widget_key]:
+                                st.session_state[session_widget_key] = compatible_widget_tokens
+                        st.session_state[previous_context_key] = current_context
+                        def format_session_token(token: str) -> str:
+                            session = session_option_by_token.get(str(token), {})
+                            session_id = str(token)
+                            session_date = str(session.get("start_timestamp") or "")[:10]
+                            session_name = str(
+                                session.get("session_name") or f"TeamSession {session_id}"
+                            ).strip()
+                            return (
+                                f"{session_date} · {session_name}"
+                                if session_date else session_name
+                            )
+
+                        widget_selected_tokens = st.multiselect(
                             "TeamSession locali attive nel PAS",
-                            options=session_options,
-                            format_func=lambda sid: (
-                                f"{str(session_by_id[sid].get('start_timestamp') or '')[:10]} · "
-                                f"{session_by_id[sid].get('session_name') or sid}"
-                            ),
-                            key=session_key,
+                            options=available_session_tokens,
+                            format_func=format_session_token,
+                            key=session_widget_key,
+                            on_change=sync_gpexe_session_widget_state,
+                            args=(session_widget_key,),
                             help="Seleziona una o più TeamSession locali da usare nel Dashboard.",
                         )
+                        selected_session_ids = [
+                            int(token) for token in widget_selected_tokens
+                        ]
+                        st.session_state[canonical_session_key] = selected_session_ids
                         st.success(
                             f"Dati GPExe READY disponibili: {len(api_sessions)} TeamSession · "
-                            f"{len(selected_ids)} selezionate."
+                            f"{len(selected_session_ids)} selezionate."
                         )
-                        if not selected_ids:
+                        if not selected_session_ids:
                             st.info("Seleziona almeno una TeamSession locale per usare i dati GPExe.")
                     else:
                         st.info("Nessuna TeamSession GPExe presente nel database PAS Connect locale.")
@@ -9529,11 +9619,26 @@ if dashboard_uses_gpexe_distance:
         if spec.get("column") in gpexe_scalar_columns
     }
     dashboard_contextual_metric_specs.update(dashboard_dynamic_metric_specs)
-    if "dashboard_overview_metrics" in st.session_state:
-        st.session_state["dashboard_overview_metrics"] = [
-            name for name in st.session_state["dashboard_overview_metrics"]
-            if name in dashboard_contextual_metric_specs
-        ]
+
+dashboard_available_metric_specs = dict(dashboard_contextual_metric_specs)
+dashboard_unavailable_metric_specs = {}
+if dashboard_uses_gpexe_distance:
+    dashboard_available_metric_specs = {
+        name: spec
+        for name, spec in dashboard_contextual_metric_specs.items()
+        if metric_has_context_values(dashboard_gpexe_overview_current, spec)
+    }
+    dashboard_unavailable_metric_specs = {
+        name: spec
+        for name, spec in dashboard_contextual_metric_specs.items()
+        if name not in dashboard_available_metric_specs
+    }
+
+if "dashboard_overview_metrics" in st.session_state:
+    st.session_state["dashboard_overview_metrics"] = [
+        name for name in st.session_state["dashboard_overview_metrics"]
+        if name in dashboard_available_metric_specs
+    ]
 
 # ---------------------------------------------------------
 # 3. PANORAMICA
@@ -9566,8 +9671,8 @@ if overview_mode == "Player Overview":
 
 overview_metric_names = st.sidebar.multiselect(
     "Metriche della panoramica",
-    list(dashboard_contextual_metric_specs.keys()),
-    default=list(dashboard_contextual_metric_specs.keys()),
+    list(dashboard_available_metric_specs.keys()),
+    default=list(dashboard_available_metric_specs.keys()),
     key="dashboard_overview_metrics",
 )
 
@@ -9584,8 +9689,8 @@ session_report_title = st.sidebar.text_input(
 
 session_report_metrics = st.sidebar.multiselect(
     "Metriche nel Professional Session Report",
-    list(dashboard_contextual_metric_specs.keys()),
-    default=list(dashboard_contextual_metric_specs.keys()),
+    list(dashboard_available_metric_specs.keys()),
+    default=list(dashboard_available_metric_specs.keys()),
     help=(
         "Il report utilizza un unico foglio A4 orizzontale "
         "con Team Average, Full Training e Different Training."
@@ -9917,7 +10022,7 @@ highlight_overview_player = st.sidebar.checkbox(
 st.sidebar.divider()
 st.sidebar.subheader("Grafici di dettaglio")
 
-detail_metric_options = list(dashboard_contextual_metric_specs.keys())
+detail_metric_options = list(dashboard_available_metric_specs.keys())
 detail_metrics_key = "dashboard_detail_metrics"
 st.session_state[detail_metrics_key] = [
     name
@@ -10150,19 +10255,14 @@ if dashboard_uses_gpexe_distance:
                     f"La sessione GPExe non contiene una metrica "
                     f"{coverage_row['Metrica']} utilizzabile."
                 )
-        elif coverage_row["Stato"] == "VERIFIED":
-            definition = next(
-                (item for item in OVERVIEW_METRICS if item.display == coverage_row["Metrica"]),
-                None,
-            )
-            if definition is not None and (
-                definition.column not in dashboard_gpexe_overview_current
-                or dashboard_gpexe_overview_current[definition.column].isna().all()
-            ):
-                st.info(
-                    f"La sessione GPExe non contiene una metrica "
-                    f"{coverage_row['Metrica']} utilizzabile."
-                )
+
+if dashboard_unavailable_metric_specs:
+    with st.expander(
+        f"Metriche non disponibili ({len(dashboard_unavailable_metric_specs)})",
+        expanded=False,
+    ):
+        for unavailable_metric_name in dashboard_unavailable_metric_specs:
+            st.markdown(f"- {unavailable_metric_name} — N/D")
 
 metric_groups = {
     "Internal Load": [
@@ -10188,7 +10288,10 @@ metric_groups = {
     ],
 }
 if dashboard_dynamic_metric_specs:
-    metric_groups["Speed Zone Distance"] = list(dashboard_dynamic_metric_specs)
+    metric_groups["Speed Zone Distance"] = [
+        name for name in dashboard_dynamic_metric_specs
+        if name in dashboard_available_metric_specs
+    ]
 
 metric_reference_rows = []
 

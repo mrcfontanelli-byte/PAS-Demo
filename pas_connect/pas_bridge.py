@@ -47,22 +47,68 @@ def available_sessions(
         if team_id is not None:
             clauses.append("s.team_id=?")
             values.append(int(team_id))
-        has_results = connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='gpexe_session_sync_results'"
-        ).fetchone() is not None
-        if ready_only:
-            if not has_results:
-                return []
-            clauses.append("EXISTS (SELECT 1 FROM gpexe_session_sync_results r "
-                           "WHERE r.provider_session_id=s.provider_session_id "
-                           "AND r.readiness='READY' AND r.status IN ('SUCCESS','SKIPPED'))")
+        table_names = {
+            str(row[0]) for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        has_results = {
+            "gpexe_session_sync_results", "gpexe_sync_runs"
+        }.issubset(table_names)
+        has_local_performance = {
+            "gpexe_athlete_session_details",
+            "gpexe_athlete_session_kpis",
+            "gpexe_athlete_team_memberships",
+        }.issubset(table_names)
+        local_eligible = """EXISTS (
+            SELECT 1
+            FROM gpexe_athlete_session_details a
+            JOIN gpexe_athlete_session_kpis k
+              ON k.provider_athlete_session_id=a.provider_athlete_session_id
+             AND k.source IN ('rest_v2','identifierKpi','kpi')
+            WHERE a.provider_session_id=s.provider_session_id
+        )"""
+        ready_eligible = """EXISTS (
+            SELECT 1 FROM gpexe_session_sync_results r
+            WHERE r.provider_session_id=s.provider_session_id
+              AND r.readiness='READY' AND r.status IN ('SUCCESS','SKIPPED')
+        )"""
         if season:
-            if not has_results:
+            eligibility: list[str] = []
+            if has_local_performance:
+                eligibility.append("""EXISTS (
+                    SELECT 1
+                    FROM gpexe_athlete_session_details a
+                    JOIN gpexe_athlete_session_kpis k
+                      ON k.provider_athlete_session_id=a.provider_athlete_session_id
+                     AND k.source IN ('rest_v2','identifierKpi','kpi')
+                    JOIN gpexe_athlete_team_memberships m
+                      ON m.provider_player_id=a.provider_player_id
+                     AND m.team_id=s.team_id AND m.season=?
+                    WHERE a.provider_session_id=s.provider_session_id
+                )""")
+                values.append(str(season))
+            if has_results:
+                eligibility.append("""EXISTS (
+                    SELECT 1 FROM gpexe_session_sync_results r
+                    JOIN gpexe_sync_runs u ON u.id=r.sync_run_id
+                    WHERE r.provider_session_id=s.provider_session_id AND u.season=?
+                      AND (?=0 OR (r.readiness='READY'
+                                   AND r.status IN ('SUCCESS','SKIPPED')))
+                )""")
+                values.extend((str(season), int(bool(ready_only))))
+            if not eligibility:
                 return []
-            clauses.append("EXISTS (SELECT 1 FROM gpexe_session_sync_results r "
-                           "JOIN gpexe_sync_runs u ON u.id=r.sync_run_id "
-                           "WHERE r.provider_session_id=s.provider_session_id AND u.season=?)")
-            values.append(str(season))
+            clauses.append("(" + " OR ".join(eligibility) + ")")
+        elif ready_only:
+            eligibility = []
+            if has_local_performance:
+                eligibility.append(local_eligible)
+            if has_results:
+                eligibility.append(ready_eligible)
+            if not eligibility:
+                return []
+            clauses.append("(" + " OR ".join(eligibility) + ")")
         where = " WHERE " + " AND ".join(clauses) if clauses else ""
         rows = connection.execute(
             """SELECT s.provider_session_id, s.session_name, s.start_timestamp,
@@ -74,22 +120,49 @@ def available_sessions(
 
 
 def available_contexts(database_path: str | Path) -> list[dict[str, object]]:
-    """Elenca Team/stagioni realmente sincronizzati, senza consultare Excel."""
+    """Elenca Team/stagioni localmente utilizzabili, senza consultare Excel."""
     path = Path(database_path)
     if not path.is_file():
         return []
     with sqlite3.connect(path) as connection:
         connection.row_factory = sqlite3.Row
-        if connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='gpexe_session_sync_results'"
-        ).fetchone() is None:
+        table_names = {
+            str(row[0]) for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        selects: list[str] = []
+        if {
+            "gpexe_team_sessions",
+            "gpexe_athlete_session_details",
+            "gpexe_athlete_session_kpis",
+            "gpexe_athlete_team_memberships",
+        }.issubset(table_names):
+            selects.append("""SELECT s.team_id AS team_id, m.season AS season,
+                       1 AS source_priority
+                FROM gpexe_team_sessions s
+                JOIN gpexe_athlete_session_details a
+                  ON a.provider_session_id=s.provider_session_id
+                JOIN gpexe_athlete_session_kpis k
+                  ON k.provider_athlete_session_id=a.provider_athlete_session_id
+                 AND k.source IN ('rest_v2','identifierKpi','kpi')
+                JOIN gpexe_athlete_team_memberships m
+                  ON m.provider_player_id=a.provider_player_id
+                 AND m.team_id=s.team_id
+                WHERE s.team_id IS NOT NULL AND TRIM(m.season)<>''""")
+        if {"gpexe_session_sync_results", "gpexe_sync_runs"}.issubset(table_names):
+            selects.append("""SELECT r.team_id AS team_id, u.season AS season,
+                       0 AS source_priority
+                FROM gpexe_session_sync_results r
+                JOIN gpexe_sync_runs u ON u.id=r.sync_run_id
+                WHERE r.readiness='READY' AND r.status IN ('SUCCESS','SKIPPED')
+                  AND r.team_id IS NOT NULL AND TRIM(u.season)<>''""")
+        if not selects:
             return []
         rows = connection.execute(
-            """SELECT DISTINCT r.team_id, u.season
-            FROM gpexe_session_sync_results r
-            JOIN gpexe_sync_runs u ON u.id=r.sync_run_id
-            WHERE r.readiness='READY' AND r.status IN ('SUCCESS','SKIPPED')
-            ORDER BY r.team_id, u.season"""
+            "SELECT team_id, season FROM (" + " UNION ALL ".join(selects)
+            + ") GROUP BY team_id, season "
+              "ORDER BY MIN(source_priority), team_id, season"
         ).fetchall()
         return [dict(row) for row in rows]
 

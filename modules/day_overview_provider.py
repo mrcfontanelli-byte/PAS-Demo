@@ -58,6 +58,20 @@ OVERVIEW_METRICS = (
 
 _OVERVIEW_BY_CANONICAL = {metric.canonical: metric for metric in OVERVIEW_METRICS}
 
+_DYNAMIC_ZONE_DEFAULT_COLOR = "#F2CF5B"
+_DYNAMIC_ZONE_HIGH_SPEED_COLOR = "#F2CF5B"
+_DYNAMIC_ZONE_TOP_SPEED_COLOR = "#E45756"
+
+
+def _dynamic_zone_color(descriptor: Any) -> str:
+    """Condivide solo la palette legacy per i bounds canonici equivalenti."""
+    bounds = (descriptor.lower_bound, descriptor.upper_bound)
+    if bounds in {(19.8, 25.2), (20.0, 25.0)}:
+        return _DYNAMIC_ZONE_HIGH_SPEED_COLOR
+    if bounds in {(25.2, None), (25.0, None)}:
+        return _DYNAMIC_ZONE_TOP_SPEED_COLOR
+    return _DYNAMIC_ZONE_DEFAULT_COLOR
+
 
 def _dynamic_zone_specs(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """Costruisce specifiche consumer dalle snapshot REST storiche."""
@@ -74,7 +88,7 @@ def _dynamic_zone_specs(rows: Iterable[dict[str, Any]]) -> dict[str, dict[str, A
         descriptor.label: {
             "column": descriptor.label, "unit": descriptor.value_unit,
             "aggregation": descriptor.accumulation, "accumulation": descriptor.accumulation,
-            "decimals": 0, "format": "number", "color": "#F2CF5B",
+            "decimals": 0, "format": "number", "color": _dynamic_zone_color(descriptor),
             "canonical_key": descriptor.metric_key, "metric_family": descriptor.metric_family,
             "threshold_lower": descriptor.lower_bound, "threshold_upper": descriptor.upper_bound,
             "threshold_unit": descriptor.threshold_unit,

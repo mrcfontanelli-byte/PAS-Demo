@@ -1,24 +1,27 @@
 PAS RELEASE MANIFEST
-Version: 4.17.3
-Source archive: PAS_DEMO_v4.17.3.zip
+Version: 4.17.4
+Source archive: PAS_DEMO_v4.17.4.zip
 Build date: 2026-08-14
 
 IMPLEMENTATION
-- REST athlete roster as the primary identity source, fetched once per run.
-- Deduplicated Athlete detail fallback for target IDs missing from the roster.
-- Identity-only persistence independent from TeamSession readiness and publish.
-- Shared REST/GraphQL no-downgrade identity merge with bounded provenance.
-- Real athlete names automatically available to the Dashboard.
+- Dashboard N/D cleanup with unavailable metrics isolated in a dedicated expander.
+- Detail and Session Report metric selectors filtered by contextual availability.
+- Consistent Dynamic Speed Zone colors across GPExe visualizations.
+- Multi-Team local GPExe discovery and hardened TeamSession selector state.
+- Stable frontend string tokens with canonical `list[int]` state.
+- BaseWeb menu stacking above the Settings panel.
 
 UNCHANGED
-- PAS statistics and Excel semantics.
+- Metric source policy, PAS statistics and Excel semantics.
 - PAS Connect schema version 12.
+- Included PAS Connect database contents.
 - Included Excel database contents.
+- GPExe synchronization behavior.
 - Streamlit Cloud compatibility.
 
 VERIFICATION
-- Targeted v4.17.3 tests: 35 passed.
-- Full automated suite: 389 passed.
+- Targeted v4.17.4 tests: 41 passed.
+- Full automated suite: 398 passed.
 - Python compileall and clean app import: OK.
 - validate_release.py and git diff --check: OK.
 - SQLite integrity_check: ok.

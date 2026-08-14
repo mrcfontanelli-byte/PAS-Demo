@@ -7,7 +7,7 @@ def test_report_relative_distance_precision_and_match_max_speed_percentage():
     reporting = (root / "modules" / "reporting.py").read_text(encoding="utf-8")
     version = (root / "modules" / "version.py").read_text(encoding="utf-8")
 
-    assert 'APP_BUILD_VERSION = "4.17.3"' in version
+    assert 'APP_BUILD_VERSION = "4.17.4"' in version
     assert '"Relative Distance (m/min)",' in reporting
     assert 'report_decimals = (' in reporting
     assert 'match_max_speed_percentages = (' in app

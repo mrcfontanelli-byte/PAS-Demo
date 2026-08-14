@@ -216,17 +216,37 @@ team_543_zones = [
     "Distance >25 km/h (m)",
 ]
 expected_scalars = [
-    "RPE", "Duration (min)", "Distance (m)", "Acc Events (n°)",
+    "Duration (min)", "Distance (m)", "Acc Events (n°)",
     "Dec Events (n°)", "Max Speed (km/h)", "Speed Events (n°)",
 ]
 assert detail_selectors[0].options == [*expected_scalars, *team_543_zones]
 assert at.session_state["dashboard_detail_metrics"] == ["Distance (m)"]
+overview_metric_selectors = [
+    item for item in at.multiselect if item.label == "Metriche della panoramica"
+]
+report_metric_selectors = [
+    item for item in at.multiselect
+    if item.label == "Metriche nel Professional Session Report"
+]
+assert "RPE" not in overview_metric_selectors[0].options
+assert "RPE" not in report_metric_selectors[0].options
+unavailable = [
+    item for item in at.expander if item.label == "Metriche non disponibili (1)"
+]
+assert len(unavailable) == 1
+assert any("RPE" in str(item.value) and "N/D" in str(item.value) for item in at.markdown)
+assert not any(
+    "pas-dashboard-card-marker" in str(item.value)
+    and '<div class="pas-card-title">RPE</div>' in str(item.value)
+    for item in at.markdown
+)
 
 selected_player = player_selectors[0].options[0]
 at.session_state["dashboard_selected_players"] = [selected_player]
 at.session_state["dashboard_detail_metrics"] = [team_543_zones[1], "Max Speed (km/h)", "RPE"]
 at.run(timeout=60)
 assert not at.exception, [str(item.value) for item in at.exception]
+assert at.session_state["dashboard_detail_metrics"] == [team_543_zones[1], "Max Speed (km/h)"]
 assert any(team_543_zones[1] in str(item.value) for item in at.markdown)
 assert any("Max Speed (km/h)" in str(item.value) for item in at.markdown)
 assert any(

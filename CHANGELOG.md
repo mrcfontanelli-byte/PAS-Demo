@@ -1,5 +1,26 @@
 # Changelog
 
+## PAS v4.17.4 - 2026-08-14
+
+### Fixed
+
+- Ripulita la Dashboard dalle metriche completamente `N/D`, ora raccolte in un expander dedicato; i selector di dettaglio e Session Report mostrano soltanto metriche disponibili.
+- Resi coerenti i colori delle Dynamic Speed Zones tra grafici e contesti GPExe.
+- Reso visibile Team 469 / 2025/2026 tramite discovery dei dati locali, senza dipendenza esclusiva dalla sync history.
+- Mantenute disponibili le TeamSession locali quando la selezione corrente è vuota, senza applicare un implicit all.
+- Separato lo stato del multiselect per Team/stagione e stabilizzato il contratto frontend con token stringa e stato canonico `list[int]`.
+- Corretto lo stacking dei menu BaseWeb sopra il pannello Settings.
+
+### Improved
+
+- Distinti esplicitamente l'insieme delle TeamSession locali disponibili e il sottoinsieme selezionato dall'utente.
+- Rafforzato lo switch tra Team 543 / 2026/2027 e Team 469 / 2025/2026, preservando soltanto selezioni compatibili con il contesto.
+
+### Unchanged
+
+- Nessuna modifica allo schema, al database PAS Connect o al file Excel incluso.
+- Nessuna modifica alla source policy delle metriche e nessuna nuova sync inclusa nella release.
+
 ## PAS v4.17.3 - 2026-08-14
 
 ### Added

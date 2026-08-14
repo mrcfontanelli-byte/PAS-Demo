@@ -1,3 +1,11 @@
+## PAS v4.17.4 — Dashboard N/D Cleanup + Speed Zone Color Consistency
+
+La Dashboard separa le metriche completamente prive di valori nel contesto GPExe corrente, spostandole in un expander dedicato **Metriche non disponibili**. I selector dei grafici di dettaglio e del Session Report propongono soltanto metriche disponibili; il percorso Excel e la source policy delle metriche restano invariati.
+
+Le Dynamic Speed Zones mantengono colori coerenti tra visualizzazioni e contesti. Il discovery locale GPExe espone tutti i Team e le stagioni supportati dai dati già persistiti, inclusi Team 543 · 2026/2027 e Team 469 · 2025/2026, senza richiedere una nuova sync.
+
+Il selector delle TeamSession separa le opzioni locali disponibili dai valori scelti, conserva uno state distinto per Team/stagione e usa token frontend stabili con stato canonico `list[int]`. La rimozione dell'ultima selezione continua a significare zero sessioni selezionate e non elimina le opzioni riselezionabili. Nei Settings, il menu BaseWeb del multiselect resta sopra il pannello grazie al fix dello stacking del portal.
+
 ## PAS v4.17.3 — GPExe Athlete Identity Sync
 
 PAS sincronizza le identità reali degli atleti tramite REST indipendentemente dalla readiness delle TeamSession. Il roster account-level `GET /rest/v2/athlete/` è la fonte primaria ed è richiesto una sola volta per run; per gli athlete ID rilevanti non presenti nel roster viene usato `GET /rest/v2/athlete/{id}/`, con lookup seriali e deduplicati per ID.

@@ -87,6 +87,34 @@ def test_team_469_and_543_dynamic_zones_are_contextual_and_ordered(tmp_path):
     assert team_469.iloc[0][labels_469].tolist() == [111, 22]
     assert team_543.iloc[0][labels_543].tolist() == [333, 44]
     assert not set(labels_469) & set(labels_543)
+    assert [
+        team_469.attrs["dynamic_metric_specs"][label]["color"] for label in labels_469
+    ] == ["#F2CF5B", "#E45756"]
+    assert [
+        team_543.attrs["dynamic_metric_specs"][label]["color"] for label in labels_543
+    ] == ["#F2CF5B", "#E45756"]
+    assert [
+        (
+            team_469.attrs["dynamic_metric_specs"][label]["threshold_lower"],
+            team_469.attrs["dynamic_metric_specs"][label]["threshold_upper"],
+            team_469.attrs["dynamic_metric_specs"][label]["canonical_key"],
+        )
+        for label in labels_469
+    ] == [
+        (19.8, 25.2, "speed_zone_distance:km/h:19.8:25.2"),
+        (25.2, None, "speed_zone_distance:km/h:25.2:"),
+    ]
+    assert [
+        (
+            team_543.attrs["dynamic_metric_specs"][label]["threshold_lower"],
+            team_543.attrs["dynamic_metric_specs"][label]["threshold_upper"],
+            team_543.attrs["dynamic_metric_specs"][label]["canonical_key"],
+        )
+        for label in labels_543
+    ] == [
+        (20.0, 25.0, "speed_zone_distance:km/h:20:25"),
+        (25.0, None, "speed_zone_distance:km/h:25:"),
+    ]
 
 
 def test_release_team_469_context_exposes_23_players_and_11_detail_options():
@@ -155,7 +183,7 @@ def test_overview_rest_precedence_null_ownership_and_graphql_fallback(tmp_path):
     assert row["speed events"] == 77
 
 
-def test_session_pdf_accepts_unicode_dynamic_labels(tmp_path):
+def test_session_pdf_accepts_unicode_dynamic_labels(tmp_path, monkeypatch):
     en_dash = chr(0x2013)
     bounded = f"Distance 20{en_dash}25 km/h (m)"
     open_ended = "Distance >25 km/h (m)"
@@ -165,8 +193,16 @@ def test_session_pdf_accepts_unicode_dynamic_labels(tmp_path):
                   "threshold_upper": 25, "color": "#F2CF5B"},
         open_ended: {"column": open_ended, "unit": "m", "aggregation": "sum",
                      "metric_family": "Speed Zone Distance", "threshold_lower": 25,
-                     "threshold_upper": None, "color": "#F2CF5B"},
+                     "threshold_upper": None, "color": "#E45756"},
     }
+    from modules import reporting
+    seen_colors = []
+    original_hex_color = reporting.colors.HexColor
+    monkeypatch.setattr(
+        reporting.colors,
+        "HexColor",
+        lambda value: seen_colors.append(value) or original_hex_color(value),
+    )
     data = pd.DataFrame({"Athlete": ["TECHNICAL ID"], bounded: [333], open_ended: [44]})
     pdf = build_session_report_pdf(
         data, [open_ended, bounded], specs, "SESSION REPORT",
@@ -176,14 +212,14 @@ def test_session_pdf_accepts_unicode_dynamic_labels(tmp_path):
     assert pdf.startswith(b"%PDF-")
     assert len(pdf) > 1000
     assert list(specs) == [bounded, open_ended]
+    assert "#F2CF5B" in seen_colors
+    assert "#E45756" in seen_colors
 
 
 def test_dynamic_metric_group_is_created_after_base_groups():
     app = (__import__("pathlib").Path(__file__).parents[1] / "app.py").read_text(encoding="utf-8")
     base_groups = app.index("metric_groups = {")
-    dynamic_group = app.index(
-        'metric_groups["Speed Zone Distance"] = list(dashboard_dynamic_metric_specs)'
-    )
+    dynamic_group = app.index('metric_groups["Speed Zone Distance"] = [')
     assert base_groups < dynamic_group
 
 
@@ -194,7 +230,7 @@ def test_detail_metrics_reuse_contextual_catalog_and_provider_data():
     selector_start = app.index('detail_metric_options = list(')
     selector_end = app.index('# Le sedute omologhe', selector_start)
     selector = app[selector_start:selector_end]
-    assert 'dashboard_contextual_metric_specs.keys()' in selector
+    assert 'dashboard_available_metric_specs.keys()' in selector
     assert 'list(METRICS.keys())' not in selector
     assert 'detail_metrics_key = "dashboard_detail_metrics"' in selector
     assert 'if name in detail_metric_options' in selector
