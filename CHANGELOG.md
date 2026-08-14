@@ -1,5 +1,33 @@
 # Changelog
 
+## PAS v4.17.3 - 2026-08-14
+
+### Added
+
+- Introdotto GPExe Athlete Identity Sync tramite roster REST e fallback Athlete detail.
+- Aggiunti i metodi pubblici `athletes()` e `athlete(id)` al client REST.
+- Aggiunta la persistenza identity-only, indipendente dalla readiness e dalla pubblicazione TeamSession.
+- Integrata la strategia roster più detail fallback per gli athlete ID rilevanti mancanti.
+
+### Fixed
+
+- Sostituito il fallback tecnico `GPEXE ATHLETE <id>` quando GPExe REST rende disponibili i nomi reali.
+- Rimossa la dipendenza della persistenza anagrafica dal publish di una TeamSession `READY`.
+- Eliminato il rischio di downgrade dell'identità nei merge tra sorgenti REST e GraphQL.
+
+### Improved
+
+- Condiviso il merge anagrafico no-downgrade, preservando campi reali già presenti.
+- Conservata provenance bounded per identity source in `raw_json`.
+- Deduplicati i detail lookup per athlete ID anche tra più TeamSession dello stesso run.
+- Rese non bloccanti le failure del roster e dei singoli Athlete detail, senza PII nei diagnostici.
+
+### Validated live
+
+- TeamSession 143261: identità reali persistite 27/27, fallback residui 0/27 e Dashboard con nomi reali 27/27.
+- Metriche 143261 invariate: 27 AthleteSession, 27 Track, 189 KPI `rest_v2`, 135 KPI `rest_v2_speed_zone`, 324 KPI totali, Max Speed 27/27, RPE NULL 27/27 e zero duplicati.
+- Roster: 100 record, 3/27 target risolti bulk e 24 detail fallback completati con successo su 24.
+
 ## PAS v4.17.2 - 2026-08-14
 
 ### Fixed

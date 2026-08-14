@@ -11,11 +11,58 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import sqlite3
 from typing import Any, Iterator, Mapping
 
 
 SCHEMA_VERSION = 12
+
+_TECHNICAL_ATHLETE_NAME = re.compile(
+    r"(?i)^\s*gpexe[\s_-]+athlete[\s_-]+\d+\s*$"
+)
+
+
+def _identity_text(value: object) -> str | None:
+    normalized = str(value or "").strip()
+    return normalized or None
+
+
+def _real_identity_text(value: object) -> str | None:
+    normalized = _identity_text(value)
+    if normalized is None or _TECHNICAL_ATHLETE_NAME.fullmatch(normalized):
+        return None
+    return normalized
+
+
+def _raw_object(value: object) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return dict(decoded) if isinstance(decoded, Mapping) else {}
+    return {}
+
+
+def _bounded_identity_raw(
+    existing_raw: object,
+    incoming_raw: object,
+    *,
+    source: str,
+) -> dict[str, Any]:
+    existing = _raw_object(existing_raw)
+    current_sources = existing.get("identity_sources")
+    sources = dict(current_sources) if isinstance(current_sources, Mapping) else {}
+    if existing and not sources:
+        sources["legacy"] = existing
+    sources[str(source or "unknown")] = _raw_object(incoming_raw)
+    return {
+        "identity_sources": sources,
+        "identity_provenance": sorted(sources),
+    }
 
 
 @dataclass(frozen=True)
@@ -504,6 +551,63 @@ class PASConnectDatabase:
     def _json(row: Mapping[str, Any]) -> str:
         return json.dumps(dict(row), ensure_ascii=False, sort_keys=True, default=str)
 
+    @staticmethod
+    def _merge_athlete_identity(
+        connection: sqlite3.Connection,
+        incoming: Mapping[str, Any],
+        *,
+        default_source: str,
+    ) -> dict[str, Any]:
+        """Fonde anagrafiche cross-source senza degradare valori reali."""
+        athlete_id = int(incoming["provider_player_id"])
+        existing = connection.execute(
+            "SELECT * FROM gpexe_athletes WHERE provider_player_id=?",
+            (athlete_id,),
+        ).fetchone()
+        merged = dict(incoming)
+        if existing is not None:
+            existing_row = dict(existing)
+            for field in ("first_name", "last_name", "short_name"):
+                candidate = _real_identity_text(incoming.get(field))
+                merged[field] = candidate or _real_identity_text(existing_row.get(field))
+
+            incoming_player = _real_identity_text(incoming.get("player_name"))
+            existing_player = _real_identity_text(existing_row.get("player_name"))
+            full_name = " ".join(
+                part for part in (merged.get("first_name"), merged.get("last_name")) if part
+            ).strip()
+            merged["player_name"] = (
+                incoming_player
+                or existing_player
+                or full_name
+                or f"GPExe Athlete {athlete_id}"
+            )
+            for field in (
+                "external_player_id", "birth_date", "club_id", "photo_url", "v0", "a0",
+                "team_id", "jersey_number", "is_active", "has_tracks",
+            ):
+                if incoming.get(field) is None and existing_row.get(field) is not None:
+                    merged[field] = existing_row[field]
+            existing_raw = existing_row.get("raw_json")
+        else:
+            merged["first_name"] = _real_identity_text(incoming.get("first_name"))
+            merged["last_name"] = _real_identity_text(incoming.get("last_name"))
+            merged["short_name"] = _real_identity_text(incoming.get("short_name"))
+            incoming_player = _real_identity_text(incoming.get("player_name"))
+            full_name = " ".join(
+                part for part in (merged.get("first_name"), merged.get("last_name")) if part
+            ).strip()
+            merged["player_name"] = incoming_player or full_name or f"GPExe Athlete {athlete_id}"
+            existing_raw = None
+
+        source = str(incoming.get("identity_source") or default_source)
+        merged["raw"] = _bounded_identity_raw(
+            existing_raw,
+            incoming.get("raw") or incoming,
+            source=source,
+        )
+        return merged
+
     def replace_reference_data(self, snapshot: Mapping[str, Any]) -> ReferenceImportResult:
         resources = snapshot.get("resources")
         if not isinstance(resources, Mapping):
@@ -594,6 +698,11 @@ class PASConnectDatabase:
                         ),
                     )
                 for row in athletes:
+                    athlete = self._merge_athlete_identity(
+                        connection,
+                        {**dict(row), "identity_source": "reference"},
+                        default_source="reference",
+                    )
                     connection.execute(
                         """
                         INSERT INTO gpexe_athletes(
@@ -616,11 +725,11 @@ class PASConnectDatabase:
                             raw_json=excluded.raw_json
                         """,
                         (
-                            row["provider_player_id"], row.get("external_player_id"),
-                            row.get("first_name"), row.get("last_name"), row["player_name"],
-                            row.get("short_name"), row.get("birth_date"), row.get("club_id"),
-                            row.get("photo_url"), row.get("v0"), row.get("a0"),
-                            synced_at, self._json(row),
+                            athlete["provider_player_id"], athlete.get("external_player_id"),
+                            athlete.get("first_name"), athlete.get("last_name"), athlete["player_name"],
+                            athlete.get("short_name"), athlete.get("birth_date"), athlete.get("club_id"),
+                            athlete.get("photo_url"), athlete.get("v0"), athlete.get("a0"),
+                            synced_at, self._json(athlete["raw"]),
                         ),
                     )
                 completed_at = datetime.now(timezone.utc).isoformat()
@@ -942,6 +1051,11 @@ class PASConnectDatabase:
                 exists = connection.execute(
                     "SELECT 1 FROM gpexe_athletes WHERE provider_player_id=?", (athlete_id,)
                 ).fetchone() is not None
+                athlete = self._merge_athlete_identity(
+                    connection,
+                    {**dict(row), "identity_source": "graphql"},
+                    default_source="graphql",
+                )
                 connection.execute(
                     """INSERT INTO gpexe_athletes(
                     provider_player_id, external_player_id, first_name, last_name, player_name,
@@ -957,13 +1071,13 @@ class PASConnectDatabase:
                     has_tracks=excluded.has_tracks, synced_at=excluded.synced_at,
                     raw_json=excluded.raw_json""",
                     (
-                        athlete_id, row.get("external_player_id"), row.get("first_name"),
-                        row.get("last_name"), row["player_name"], row.get("short_name"),
-                        row.get("birth_date"), row.get("photo_url"), row.get("team_id"),
-                        str(row.get("jersey_number")) if row.get("jersey_number") is not None else None,
-                        int(bool(row.get("is_active"))) if row.get("is_active") is not None else None,
-                        int(bool(row.get("has_tracks"))) if row.get("has_tracks") is not None else None,
-                        synced_at, self._json(row.get("raw") or row),
+                        athlete_id, athlete.get("external_player_id"), athlete.get("first_name"),
+                        athlete.get("last_name"), athlete["player_name"], athlete.get("short_name"),
+                        athlete.get("birth_date"), athlete.get("photo_url"), athlete.get("team_id"),
+                        str(athlete.get("jersey_number")) if athlete.get("jersey_number") is not None else None,
+                        int(bool(athlete.get("is_active"))) if athlete.get("is_active") is not None else None,
+                        int(bool(athlete.get("has_tracks"))) if athlete.get("has_tracks") is not None else None,
+                        synced_at, self._json(athlete["raw"]),
                     ),
                 )
                 if row.get("team_id") not in (None, ""):
@@ -977,17 +1091,118 @@ class PASConnectDatabase:
                         last_seen_at=excluded.last_seen_at, raw_json=excluded.raw_json""",
                         (
                             athlete_id, int(row["team_id"]), str(season or ""),
-                            str(row.get("jersey_number"))
-                            if row.get("jersey_number") is not None else None,
-                            int(bool(row.get("is_active")))
-                            if row.get("is_active") is not None else None,
-                            synced_at, synced_at, self._json(row.get("raw") or row),
+                            str(athlete.get("jersey_number"))
+                            if athlete.get("jersey_number") is not None else None,
+                            int(bool(athlete.get("is_active")))
+                            if athlete.get("is_active") is not None else None,
+                            synced_at, synced_at, self._json(athlete["raw"]),
                         ),
                     )
                 inserted += int(not exists)
                 updated += int(exists)
             connection.commit()
         return inserted, updated
+
+    def upsert_athlete_identities(
+        self,
+        identities: Mapping[int, Mapping[str, Any]] | list[Mapping[str, Any]],
+        *,
+        source: str = "rest_v2",
+    ) -> tuple[int, int]:
+        """Persiste sole identita atleta, senza modificare contesti o metriche."""
+        if not self.path.is_file():
+            self.initialize()
+        rows = list(identities.values()) if isinstance(identities, Mapping) else list(identities)
+        inserted = updated = 0
+        synced_at = datetime.now(timezone.utc).isoformat()
+        with self.connect() as connection:
+            try:
+                connection.execute("BEGIN")
+                for incoming in rows:
+                    athlete_id = int(incoming["provider_player_id"])
+                    exists = connection.execute(
+                        "SELECT 1 FROM gpexe_athletes WHERE provider_player_id=?",
+                        (athlete_id,),
+                    ).fetchone() is not None
+                    athlete = self._merge_athlete_identity(
+                        connection,
+                        incoming,
+                        default_source=source,
+                    )
+                    connection.execute(
+                        """INSERT INTO gpexe_athletes(
+                        provider_player_id, external_player_id, first_name, last_name, player_name,
+                        short_name, birth_date, photo_url, team_id, jersey_number, is_active,
+                        has_tracks, synced_at, raw_json
+                        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        ON CONFLICT(provider_player_id) DO UPDATE SET
+                        external_player_id=excluded.external_player_id,
+                        first_name=excluded.first_name, last_name=excluded.last_name,
+                        player_name=excluded.player_name, short_name=excluded.short_name,
+                        birth_date=excluded.birth_date, photo_url=excluded.photo_url,
+                        team_id=excluded.team_id, jersey_number=excluded.jersey_number,
+                        is_active=excluded.is_active, has_tracks=excluded.has_tracks,
+                        synced_at=excluded.synced_at, raw_json=excluded.raw_json""",
+                        (
+                            athlete_id, athlete.get("external_player_id"), athlete.get("first_name"),
+                            athlete.get("last_name"), athlete["player_name"], athlete.get("short_name"),
+                            athlete.get("birth_date"), athlete.get("photo_url"), athlete.get("team_id"),
+                            str(athlete.get("jersey_number"))
+                            if athlete.get("jersey_number") is not None else None,
+                            int(bool(athlete.get("is_active")))
+                            if athlete.get("is_active") is not None else None,
+                            int(bool(athlete.get("has_tracks")))
+                            if athlete.get("has_tracks") is not None else None,
+                            synced_at, self._json(athlete["raw"]),
+                        ),
+                    )
+                    inserted += int(not exists)
+                    updated += int(exists)
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return inserted, updated
+
+    def athlete_ids_for_sessions(self, session_ids: tuple[int, ...]) -> set[int]:
+        """Restituisce gli athlete ID locali rilevanti per le TeamSession richieste."""
+        if not self.path.is_file() or not session_ids:
+            return set()
+        placeholders = ",".join("?" for _ in session_ids)
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""SELECT DISTINCT provider_player_id
+                FROM gpexe_athlete_session_details
+                WHERE provider_session_id IN ({placeholders})
+                  AND provider_player_id IS NOT NULL""",
+                session_ids,
+            ).fetchall()
+        return {int(row[0]) for row in rows}
+
+    def athlete_ids_with_real_identity(self, athlete_ids: set[int]) -> set[int]:
+        """Individua identita locali sufficienti a evitare un detail lookup."""
+        if not self.path.is_file() or not athlete_ids:
+            return set()
+        ordered = tuple(sorted(athlete_ids))
+        placeholders = ",".join("?" for _ in ordered)
+        with self.connect() as connection:
+            rows = connection.execute(
+                f"""SELECT provider_player_id,first_name,last_name,player_name
+                FROM gpexe_athletes
+                WHERE provider_player_id IN ({placeholders})""",
+                ordered,
+            ).fetchall()
+        return {
+            int(row["provider_player_id"])
+            for row in rows
+            if (
+                _real_identity_text(row["player_name"])
+                or (
+                    _real_identity_text(row["first_name"])
+                    and _real_identity_text(row["last_name"])
+                )
+            )
+        }
 
     def list_metric_profiles(self, *, team_id: Any | None = None) -> list[dict[str, Any]]:
         """Legge i profili senza modificare i dati sincronizzati GPExe."""
@@ -1613,7 +1828,12 @@ class PASConnectDatabase:
                         team_session.get("updated_at"), synced_at, self._json(team_session),
                     ),
                 )
-                for athlete in athletes:
+                for incoming_athlete in athletes:
+                    athlete = self._merge_athlete_identity(
+                        connection,
+                        incoming_athlete,
+                        default_source=str(incoming_athlete.get("identity_source") or "provider"),
+                    )
                     connection.execute(
                         """INSERT INTO gpexe_athletes(
                         provider_player_id, external_player_id, first_name, last_name, player_name,
@@ -1753,8 +1973,11 @@ class PASConnectDatabase:
         season: str | None = None,
     ) -> tuple[int, int, int]:
         """Alias compatibile per il percorso GraphQL esistente."""
+        graphql_athletes = [
+            {**dict(athlete), "identity_source": "graphql"} for athlete in athletes
+        ]
         return self.upsert_team_session_bundle(
-            team_session, athletes, sessions,
+            team_session, graphql_athletes, sessions,
             replace_kpis=replace_kpis,
             replace_kpi_sources={"identifierKpi", "kpi"} if replace_kpis else None,
             season=season,

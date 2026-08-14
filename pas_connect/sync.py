@@ -12,7 +12,9 @@ from .endpoints import ATHLETES, SESSION_CATEGORIES, SESSION_TAGS, TEAMS, TEAM_S
 from .mapper import map_athlete, map_category, map_many, map_tag, map_team, map_team_session, map_team_session_detail, map_athlete_session_detail, map_graphql_athlete, map_graphql_athlete_session
 from .services import GPExeServices
 from .exceptions import APIRequestError
-from .rest_persistence import GPExeRESTPersistenceGate
+from .rest_persistence import GPExeRESTIdentityPersistence, GPExeRESTPersistenceGate
+from .rest_client import GPExeRESTClient, RESTProcessingResponse
+from .rest_mapper import index_rest_athlete_identities, map_rest_athlete_identity
 from .rest_service import GPExeRESTService
 
 
@@ -130,6 +132,16 @@ class SyncRunResult:
     def counts(self) -> dict[str, int]:
         return {name.lower() + "_count": sum(item.status == name for item in self.sessions)
                 for name in ("SUCCESS", "PARTIAL", "FAILED", "SKIPPED")}
+
+
+@dataclass
+class RESTIdentitySyncResult:
+    """Contesto per-run che impedisce roster/detail duplicati."""
+
+    identity_index: dict[int, Mapping[str, Any]]
+    attempted_detail_ids: set[int]
+    roster_failed: bool = False
+    detail_failures: int = 0
 
 
 @dataclass(frozen=True)
@@ -314,6 +326,62 @@ def run_graphql_sync(
     return SyncRunResult(run_id, aggregate, tuple(results), "GRAPHQL")
 
 
+def run_rest_identity_sync(
+    client: GPExeRESTClient,
+    database: "PASConnectDatabase",
+    target_athlete_ids: set[int] | None = None,
+    *,
+    state: RESTIdentitySyncResult | None = None,
+) -> RESTIdentitySyncResult:
+    """Sincronizza identita REST senza dipendere dalla readiness TeamSession.
+
+    Il roster viene letto solo alla creazione del contesto. I detail mancanti
+    sono seriali, al massimo uno per athlete ID unico nel run, e best-effort.
+    """
+    from .database import PASConnectDatabase
+    if not isinstance(database, PASConnectDatabase):
+        raise TypeError("database deve essere un PASConnectDatabase")
+    identity_store = GPExeRESTIdentityPersistence(database)
+    if state is None:
+        state = RESTIdentitySyncResult({}, set())
+        try:
+            raw_roster = client.athletes()
+            if not isinstance(raw_roster, RESTProcessingResponse):
+                state.identity_index.update(index_rest_athlete_identities(raw_roster))
+                identity_store.persist(state.identity_index)
+        except Exception:
+            # L'arricchimento anagrafico e' best-effort e non blocca le metriche.
+            state.roster_failed = True
+
+    targets = {
+        int(athlete_id) for athlete_id in (target_athlete_ids or set())
+        if int(athlete_id) > 0
+    }
+    locally_resolved = database.athlete_ids_with_real_identity(targets)
+    missing = sorted(
+        targets - set(state.identity_index) - locally_resolved - state.attempted_detail_ids
+    )
+    mapped_details: dict[int, Mapping[str, Any]] = {}
+    for athlete_id in missing:
+        state.attempted_detail_ids.add(athlete_id)
+        try:
+            raw_detail = client.athlete(athlete_id)
+            if isinstance(raw_detail, RESTProcessingResponse):
+                state.detail_failures += 1
+                continue
+            mapped = map_rest_athlete_identity(
+                raw_detail,
+                provenance="gpexe_rest_athlete_detail",
+            )
+            mapped_details[athlete_id] = mapped
+        except Exception:
+            state.detail_failures += 1
+    if mapped_details:
+        identity_store.persist(mapped_details)
+        state.identity_index.update(mapped_details)
+    return state
+
+
 def run_rest_sync(
     service: GPExeRESTService, database: "PASConnectDatabase", request: SyncRequest,
     *, progress: Callable[[SyncProgressEvent], None] | None = None,
@@ -338,6 +406,11 @@ def run_rest_sync(
         team_id=request.team_id, transport="rest",
     ))
     gate = GPExeRESTPersistenceGate(database)
+    identity_state = run_rest_identity_sync(
+        service.client,
+        database,
+        database.athlete_ids_for_sessions(session_ids),
+    )
     results: list[SessionSyncResult] = []
     for session_id in session_ids:
         started_at = datetime.now(timezone.utc).isoformat()
@@ -354,13 +427,28 @@ def run_rest_sync(
                 for diagnostic in built.diagnostics:
                     emit("REST-DIAGNOSTIC", diagnostic)
                 bundle_sessions = tuple((built.bundle or {}).get("athlete_sessions") or ())
+                bundle_athlete_ids = {
+                    int(row["athlete"]["provider_player_id"])
+                    for row in bundle_sessions
+                    if isinstance(row.get("athlete"), Mapping)
+                    and row["athlete"].get("provider_player_id") not in (None, "")
+                }
+                identity_state = run_rest_identity_sync(
+                    service.client,
+                    database,
+                    bundle_athlete_ids,
+                    state=identity_state,
+                )
                 tracks = sum(bool((row.get("track") or {}).get("provider_track_id"))
                              for row in bundle_sessions)
                 active_kpis = sum(sum(bool(metric.get("active"))
                                       for metric in row.get("kpis") or ())
                                   for row in bundle_sessions)
                 if built.status == "READY" and not built.processing:
-                    published = gate.publish(built, season=request.season)
+                    published = gate.publish(
+                        built, season=request.season,
+                        identity_index=identity_state.identity_index,
+                    )
                     item = SessionSyncResult(
                         session_id, "SUCCESS", "READY", published.athlete_sessions_count,
                         published.tracks_count, published.kpis_count,

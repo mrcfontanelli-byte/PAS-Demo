@@ -1,3 +1,11 @@
+## PAS v4.17.3 — GPExe Athlete Identity Sync
+
+PAS sincronizza le identità reali degli atleti tramite REST indipendentemente dalla readiness delle TeamSession. Il roster account-level `GET /rest/v2/athlete/` è la fonte primaria ed è richiesto una sola volta per run; per gli athlete ID rilevanti non presenti nel roster viene usato `GET /rest/v2/athlete/{id}/`, con lookup seriali e deduplicati per ID.
+
+La persistenza identity-only aggiorna esclusivamente `gpexe_athletes` anche quando una TeamSession è ancora HTTP 202, senza pubblicare TeamSession, AthleteSession, Track, KPI o Dynamic Speed Zones. Il merge condiviso REST/GraphQL è no-downgrade: valori nulli, vuoti o fallback tecnici non sostituiscono mai un'identità reale e la provenance in `raw_json` resta bounded.
+
+Il Dashboard usa automaticamente i nomi reali disponibili, conservando il fallback `GPEXE ATHLETE <id>` soltanto quando necessario. La semantica e i dataset delle metriche GPExe ed Excel restano invariati.
+
 ## PAS v4.17.2 — GPExe Contextual Detail Metrics
 
 I grafici di dettaglio della Dashboard sono ora provider-aware anche con GPExe e riusano lo stesso catalogo metrico contestuale di Team Overview e Player Overview. In un contesto GPExe il selettore propone i sette scalar disponibili e le Speed Zones dinamiche definite per Team e stagione, con metadata, formati e dataset contestuali coerenti anche nel confronto giocatori e nella Media Team.

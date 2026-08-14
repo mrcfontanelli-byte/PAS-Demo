@@ -14,6 +14,8 @@ from urllib.request import Request, urlopen
 
 from .config import GPExeConfig, normalize_gpexe_base_url
 from .endpoints import (
+    ATHLETES,
+    ATHLETE_DETAIL,
     ATHLETE_SESSION_DETAIL,
     AUTH_TOKEN,
     TEAM_SESSION_ATHLETES,
@@ -113,6 +115,17 @@ class GPExeRESTClient:
             TEAM_SESSION_DETAIL,
             path_values={"id": self._positive_id(team_session_id, "TeamSession")},
             query=query,
+        )
+
+    def athletes(self) -> Any:
+        """Restituisce la prima pagina del roster REST account-level."""
+        return self._request(ATHLETES)
+
+    def athlete(self, athlete_id: int) -> Any:
+        """Restituisce l'identita di un singolo atleta REST."""
+        return self._request(
+            ATHLETE_DETAIL,
+            path_values={"id": self._positive_id(athlete_id, "Athlete")},
         )
 
     def athlete_sessions(self, team_session_id: int) -> Any:

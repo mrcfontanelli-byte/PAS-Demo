@@ -97,6 +97,65 @@ def map_rest_athlete_reference(value: object) -> dict[str, Any]:
     return {"provider_player_id": _integer(value, "Athlete ID"), "provenance": PROVENANCE}
 
 
+def _identity_text(value: object) -> str | None:
+    normalized = str(value or "").strip()
+    return normalized or None
+
+
+def map_rest_athlete_identity(
+    payload: Mapping[str, Any],
+    *,
+    provenance: str = "gpexe_rest_athlete_roster",
+) -> dict[str, Any]:
+    """Mappa una riga roster senza introdurre dipendenze da TeamSession."""
+    row = _mapping(payload, "Athlete roster row")
+    athlete_id = _integer(row.get("id"), "Athlete ID")
+    first_name = _identity_text(row.get("first_name"))
+    last_name = _identity_text(row.get("last_name"))
+    short_name = _identity_text(row.get("short_name"))
+    provider_name = _identity_text(row.get("name"))
+    full_name = " ".join(part for part in (first_name, last_name) if part) or None
+    return {
+        "provider_player_id": athlete_id,
+        "first_name": first_name,
+        "last_name": last_name,
+        "short_name": short_name,
+        "provider_name": provider_name,
+        "player_name": provider_name or full_name or f"GPExe Athlete {athlete_id}",
+        "provider_contract": "rest_v2",
+        "identity_source": "rest_v2",
+        "provenance": provenance,
+        "raw": dict(row),
+    }
+
+
+def index_rest_athlete_identities(payload: object) -> dict[int, dict[str, Any]]:
+    """Indicizza la prima pagina roster, fondendo duplicati in modo deterministico."""
+    if not isinstance(payload, list):
+        raise MappingError("Athlete roster REST deve essere una lista diretta.")
+    result: dict[int, dict[str, Any]] = {}
+    for raw in payload:
+        mapped = map_rest_athlete_identity(_mapping(raw, "Athlete roster row"))
+        athlete_id = int(mapped["provider_player_id"])
+        existing = result.get(athlete_id)
+        if existing is None:
+            result[athlete_id] = mapped
+            continue
+        merged = dict(existing)
+        for field in ("first_name", "last_name", "short_name", "provider_name"):
+            if mapped.get(field) is not None:
+                merged[field] = mapped[field]
+        full_name = " ".join(
+            part for part in (merged.get("first_name"), merged.get("last_name")) if part
+        ) or None
+        merged["player_name"] = (
+            merged.get("provider_name") or full_name or f"GPExe Athlete {athlete_id}"
+        )
+        merged["raw"] = mapped["raw"]
+        result[athlete_id] = merged
+    return result
+
+
 def map_rest_track_reference(value: object) -> dict[str, Any]:
     return {"provider_track_id": str(_integer(value, "Track ID")), "provenance": PROVENANCE}
 

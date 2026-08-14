@@ -1,14 +1,14 @@
 PAS RELEASE MANIFEST
-Version: 4.17.2
-Source archive: PAS_DEMO_v4.17.2.zip
+Version: 4.17.3
+Source archive: PAS_DEMO_v4.17.3.zip
 Build date: 2026-08-14
 
 IMPLEMENTATION
-- Provider-aware detail-chart metric selector backed by the contextual catalog.
-- Dynamic Team/Season Speed Zones available in detail charts.
-- Contextual metadata and GPExe datasets used by charts and player comparison.
-- Team average support for contextual metrics.
-- Detail metric state normalization across provider and Team changes.
+- REST athlete roster as the primary identity source, fetched once per run.
+- Deduplicated Athlete detail fallback for target IDs missing from the roster.
+- Identity-only persistence independent from TeamSession readiness and publish.
+- Shared REST/GraphQL no-downgrade identity merge with bounded provenance.
+- Real athlete names automatically available to the Dashboard.
 
 UNCHANGED
 - PAS statistics and Excel semantics.
@@ -17,12 +17,12 @@ UNCHANGED
 - Streamlit Cloud compatibility.
 
 VERIFICATION
-- Targeted v4.17.2 tests: 17 passed.
-- Full automated suite: 376 passed.
+- Targeted v4.17.3 tests: 35 passed.
+- Full automated suite: 389 passed.
 - Python compileall and clean app import: OK.
 - validate_release.py and git diff --check: OK.
 - SQLite integrity_check: ok.
 - PAS Connect database SHA-256:
-  339e66d1e2709463b2efc6291a335e08c3147de514f14d00cb77c5f0dbe023f8
+  d2c3e9ae5bc35aafe29966706ea1fa57654133de60c703b1c378714b3bfb228a
 - Included Excel database SHA-256:
   9efa8e9ccfcb6bcff55b5f73407fc1b9e449c3a0633ee8f5a525d5a72d63010b

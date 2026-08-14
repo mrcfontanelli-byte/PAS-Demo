@@ -25,11 +25,41 @@ class RESTPersistenceResult:
     reason: str | None = None
 
 
+@dataclass(frozen=True)
+class RESTIdentityPersistenceResult:
+    received: int
+    inserted: int
+    updated: int
+
+
+class GPExeRESTIdentityPersistence:
+    """Persistence identity-only, indipendente dalla readiness TeamSession."""
+
+    def __init__(self, database: PASConnectDatabase) -> None:
+        self.database = database
+
+    def persist(
+        self,
+        identity_index: Mapping[int, Mapping[str, Any]],
+    ) -> RESTIdentityPersistenceResult:
+        inserted, updated = self.database.upsert_athlete_identities(
+            identity_index,
+            source="rest_v2",
+        )
+        return RESTIdentityPersistenceResult(len(identity_index), inserted, updated)
+
+
 class GPExeRESTPersistenceGate:
     def __init__(self, database: PASConnectDatabase) -> None:
         self.database = database
 
-    def publish(self, result: RESTBundleResult, *, season: str) -> RESTPersistenceResult:
+    def publish(
+        self,
+        result: RESTBundleResult,
+        *,
+        season: str,
+        identity_index: Mapping[int, Mapping[str, Any]] | None = None,
+    ) -> RESTPersistenceResult:
         if result.status != "READY" or result.processing or result.bundle is None:
             return RESTPersistenceResult(
                 False, result.status,
@@ -38,7 +68,11 @@ class GPExeRESTPersistenceGate:
         if not str(season).strip():
             raise ValueError("Stagione obbligatoria per la persistenza REST.")
         normalized_season = str(season).strip()
-        parent, athletes, sessions = self._adapt_bundle(result.bundle, season=normalized_season)
+        parent, athletes, sessions = self._adapt_bundle(
+            result.bundle,
+            season=normalized_season,
+            identity_index=identity_index,
+        )
         session_count, track_count, kpi_count = self.database.upsert_team_session_bundle(
             parent, athletes, sessions, replace_kpis=True,
             replace_kpi_sources={REST_KPI_SOURCE, "rest_v2_speed_zone"},
@@ -50,7 +84,11 @@ class GPExeRESTPersistenceGate:
         )
 
     def _adapt_bundle(
-        self, bundle: Mapping[str, Any], *, season: str | None = None,
+        self,
+        bundle: Mapping[str, Any],
+        *,
+        season: str | None = None,
+        identity_index: Mapping[int, Mapping[str, Any]] | None = None,
     ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]]]:
         if bundle.get("provider_contract") != "rest_v2":
             raise ValueError("Il gate accetta esclusivamente bundle REST v2.")
@@ -73,18 +111,27 @@ class GPExeRESTPersistenceGate:
             "provenance": "gpexe_rest_team_session_detail", "raw": team.get("raw"),
         }
         athletes_by_id: dict[int, dict[str, Any]] = {}
+        identities = identity_index or {}
         sessions: list[dict[str, Any]] = []
         for row in bundle.get("athlete_sessions") or ():
             athlete_id = int(row["athlete"]["provider_player_id"])
             track_id = str(row["track"]["provider_track_id"])
+            identity = identities.get(athlete_id) or {}
             athletes_by_id.setdefault(athlete_id, {
                 "provider_player_id": athlete_id,
-                "player_name": f"GPExe Athlete {athlete_id}",
+                "first_name": identity.get("first_name"),
+                "last_name": identity.get("last_name"),
+                "short_name": identity.get("short_name"),
+                "player_name": identity.get("player_name") or f"GPExe Athlete {athlete_id}",
                 "team_id": int(team["team_id"]), "has_tracks": True,
                 "provider_contract": "rest_v2",
-                "provenance": "gpexe_rest_athlete_reference",
-                "raw": {"provider_player_id": athlete_id, "provider_contract": "rest_v2",
-                        "provenance": "gpexe_rest_athlete_reference"},
+                "identity_source": "rest_v2",
+                "provenance": identity.get("provenance") or "gpexe_rest_athlete_reference",
+                "raw": identity.get("raw") or {
+                    "provider_player_id": athlete_id,
+                    "provider_contract": "rest_v2",
+                    "provenance": "gpexe_rest_athlete_reference",
+                },
             })
             provider_kpis = []
             for metric in row.get("kpis") or []:

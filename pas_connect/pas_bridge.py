@@ -148,7 +148,11 @@ def load_pilot_distance_frame(database_path: str | Path) -> pd.DataFrame:
         raise FileNotFoundError(f"Database PAS Connect non trovato: {path}")
     sql = """
         SELECT s.start_timestamp AS Date,
-               COALESCE(a.player_name, 'GPExe Athlete ' || d.provider_player_id) AS Athlete,
+               COALESCE(
+                   NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''),
+                   NULLIF(TRIM(a.player_name), ''),
+                   'GPExe Athlete ' || d.provider_player_id
+               ) AS Athlete,
                d.provider_player_id AS athlete_id,
                k.value AS distance_value, k.uom AS distance_uom,
                d.provider_session_id AS team_session_id,
@@ -267,7 +271,11 @@ def load_session_relative_distance_frame(
         aliases = {provider_name, provider_name.replace(" (m/min)", ""), "average_v", "avg speed"}
         placeholders = ",".join("?" for _ in aliases)
         sql = f"""SELECT s.start_timestamp Date,
-          COALESCE(a.player_name, 'GPExe Athlete ' || d.provider_player_id) Athlete,
+          COALESCE(
+              NULLIF(TRIM(COALESCE(a.first_name, '') || ' ' || COALESCE(a.last_name, '')), ''),
+              NULLIF(TRIM(a.player_name), ''),
+              'GPExe Athlete ' || d.provider_player_id
+          ) Athlete,
           d.provider_player_id athlete_id, k.value metric_value, k.uom metric_uom,
           d.provider_session_id team_session_id, s.team_id team_id,
           d.provider_athlete_session_id athlete_session_id

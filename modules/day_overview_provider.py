@@ -287,7 +287,11 @@ def load_gpexe_day_overview(
         params.extend(selected_sessions)
     sql = f"""SELECT d.provider_athlete_session_id athlete_session_id,
       d.provider_session_id team_session_id,d.provider_player_id athlete_id,s.team_id,
-      s.start_timestamp,COALESCE(a.player_name,'GPExe Athlete '||d.provider_player_id) athlete,
+      s.start_timestamp,COALESCE(
+        NULLIF(TRIM(COALESCE(a.first_name,'')||' '||COALESCE(a.last_name,'')),''),
+        NULLIF(TRIM(a.player_name),''),
+        'GPExe Athlete '||d.provider_player_id
+      ) athlete,
       d.raw_json detail_raw_json,k.source,k.position,k.name,k.value,k.kpi_group,
       k.uom,k.unit,k.raw_json kpi_raw_json
       FROM gpexe_athlete_session_details d JOIN gpexe_team_sessions s
