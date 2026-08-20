@@ -18,6 +18,8 @@ from .endpoints import (
     ATHLETE_DETAIL,
     ATHLETE_SESSION_DETAIL,
     AUTH_TOKEN,
+    TEAMS,
+    TEAM_SESSIONS,
     TEAM_SESSION_ATHLETES,
     TEAM_SESSION_DETAIL,
     Endpoint,
@@ -55,6 +57,8 @@ class RESTProcessingResponse:
     state: str = "processing/not ready"
     payload: Any = None
     retry_after_seconds: float | None = None
+    task_id: str | int | None = None
+    original_task_id: str | int | None = None
 
 
 @dataclass
@@ -120,6 +124,19 @@ class GPExeRESTClient:
     def athletes(self) -> Any:
         """Restituisce la prima pagina del roster REST account-level."""
         return self._request(ATHLETES)
+
+    def teams(self) -> Any:
+        """Restituisce le anagrafiche Team REST account-level."""
+        return self._request(TEAMS)
+
+    def team_sessions_page(self, *, page: int = 1, page_size: int = 500) -> Any:
+        """Restituisce una pagina pubblica del catalogo TeamSession REST."""
+        if int(page) <= 0 or int(page_size) <= 0:
+            raise ValueError("Pagina e page size TeamSession devono essere positivi.")
+        return self._request(
+            TEAM_SESSIONS,
+            query={"page": int(page), "page_size": int(page_size), "limit": int(page_size)},
+        )
 
     def athlete(self, athlete_id: int) -> Any:
         """Restituisce l'identita di un singolo atleta REST."""
@@ -190,9 +207,18 @@ class GPExeRESTClient:
                     f"Richiesta REST GPExe {endpoint.method} {path} · HTTP {status}."
                 )
             if status == 202:
+                payload = self._decode(raw, status=status, headers=response_headers, url=url)
                 return RESTProcessingResponse(
-                    payload=self._decode(raw, status=status, headers=response_headers, url=url),
-                    retry_after_seconds=self._retry_after_value(response_headers),
+                    payload=payload,
+                    retry_after_seconds=(
+                        self._retry_after_value(response_headers)
+                        if self._retry_after_value(response_headers) is not None
+                        else self._retry_after_payload_value(payload)
+                    ),
+                    task_id=payload.get("task_id") if isinstance(payload, Mapping) else None,
+                    original_task_id=(
+                        payload.get("original_task_id") if isinstance(payload, Mapping) else None
+                    ),
                 )
             return self._decode(raw, status=status, headers=response_headers, url=url)
 
@@ -242,6 +268,20 @@ class GPExeRESTClient:
             return min(float(retry_after), self.config.max_retry_delay_seconds)
         except ValueError:
             return None
+
+    def _retry_after_payload_value(self, payload: object) -> float | None:
+        if not isinstance(payload, Mapping):
+            return None
+        value = payload.get("retry_after")
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            seconds = float(value)
+        except (TypeError, ValueError):
+            return None
+        if seconds < 0:
+            return None
+        return min(seconds, self.config.max_retry_delay_seconds)
 
     def _decode(
         self,

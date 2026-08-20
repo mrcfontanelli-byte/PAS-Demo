@@ -23,6 +23,19 @@ from .metric_catalog import PROVIDER_REGISTRY, catalog_preview_from_csv, planned
 from .metric_usage import MODULES, USAGE_STATUSES, USAGE_TYPES, scan_metric_usage, usage_record
 from .sync import sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, sync_tracks, run_full_sync, run_graphql_sync, run_rest_identity_sync, run_rest_sync, retry_sync_session, retry_sync_errors, FullSyncEvent, SyncRequest, SyncRunResult, RESTIdentitySyncResult, SessionSyncResult, SyncProgressEvent
 from .sync import SyncPlan, build_default_sync_plan
+from .historical_sync import (
+    HistoricalBatchAttempt, HistoricalBatchResult, HistoricalCatalogResult,
+    HistoricalSyncAction, HistoricalSyncPlanItem, REST_RATE_LIMIT_PER_MINUTE,
+    SESSION_CONCURRENCY, TEAM_SESSION_LIST_PAGE_SIZE, persist_rest_team_references,
+    plan_historical_sync, run_historical_performance_batch, select_historical_batch,
+    speed_profile_state, sync_historical_team_session_catalog,
+)
+from .daily_sync import (
+    DAILY_SEASON, DAILY_TEAM_ID, MAX_DAILY_ATTEMPTS, WINDOW_DAYS,
+    DailyCatalogResult, DailySyncAction, DailySyncAttempt, DailySyncCandidate,
+    DailySyncPlan, DailySyncResult, next_retry_at, plan_daily_sync,
+    refresh_daily_catalog, retry_is_mature, run_daily_sync,
+)
 
 __all__ = [
     "DataProvider",
@@ -101,4 +114,33 @@ __all__ = [
     "FullSyncEvent",
     "SyncPlan",
     "build_default_sync_plan",
+    "HistoricalCatalogResult",
+    "HistoricalBatchAttempt",
+    "HistoricalBatchResult",
+    "HistoricalSyncAction",
+    "HistoricalSyncPlanItem",
+    "REST_RATE_LIMIT_PER_MINUTE",
+    "SESSION_CONCURRENCY",
+    "TEAM_SESSION_LIST_PAGE_SIZE",
+    "persist_rest_team_references",
+    "plan_historical_sync",
+    "select_historical_batch",
+    "run_historical_performance_batch",
+    "speed_profile_state",
+    "sync_historical_team_session_catalog",
+    "DAILY_TEAM_ID",
+    "DAILY_SEASON",
+    "WINDOW_DAYS",
+    "MAX_DAILY_ATTEMPTS",
+    "DailyCatalogResult",
+    "DailySyncAction",
+    "DailySyncAttempt",
+    "DailySyncCandidate",
+    "DailySyncPlan",
+    "DailySyncResult",
+    "next_retry_at",
+    "retry_is_mature",
+    "plan_daily_sync",
+    "refresh_daily_catalog",
+    "run_daily_sync",
 ]

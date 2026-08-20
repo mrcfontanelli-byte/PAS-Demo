@@ -1,5 +1,77 @@
 # Changelog
 
+## PAS v4.18.1 - 2026-08-20
+
+### Added
+
+- Aggiunto il Daily Sync GPExe operativo per Team 543 / 2026/2027.
+- Aggiunti il planner Daily separato e il refresh del catalogo Daily.
+- Aggiunto il cooldown per i retry delle risposte 202 non ancora completabili.
+- Aggiunto il comando PAS Connect **Sincronizza nuove sessioni**.
+- Aggiunti risultato e summary tipizzati del Daily Sync.
+
+### Changed
+
+- Le Full Training recenti hanno priorità nel piano Daily.
+- Il selector Dashboard viene riletto dopo la pubblicazione READY.
+- `available_athletes` filtra gli atleti sulle sole TeamSession selezionate.
+- Il parsing delle categorie GPExe riconosce anche descrizioni decorate come `[FULL TRAINING]`.
+
+### Fixed
+
+- Corretto il mancato riconoscimento delle descrizioni decorate `[FULL TRAINING]`.
+- Eliminata la divergenza tra Player selector e `available_athletes`.
+- Impedito qualsiasi implicit-all quando la selezione è `[]`.
+
+## PAS v4.18.0 - 2026-08-20
+
+### Added
+
+- Aggiunta la foundation storica multi-season GPExe con contesto provider Team/Season.
+- Aggiunto il supporto al catalogo Team e ai relativi nomi.
+- Aggiunto il fallback REST elementary quando il payload aggregate non è sufficiente.
+- Aggiunta la classificazione gerarchica di session, exercise e drill.
+- Aggiunta l'eligibility canonica delle TeamSession per la Dashboard PAS.
+
+### Changed
+
+- Il selector GPExe mostra soltanto le TeamSession appartenenti alle categorie Dashboard canoniche.
+- **Seleziona tutte** usa esclusivamente le TeamSession Dashboard eligible e non applica implicit-all a una selezione vuota.
+- `Different Traning` è trattato come alias logico di `Different Training`, preservando il valore raw del provider.
+
+### Fixed
+
+- Resa autorevole la membership scoped per le drill TeamSession con `teamsession` parent interno.
+- Impedito il doppio conteggio automatico in Dashboard tra parent ed exercise/drill.
+- Consolidati la gestione `N/D` e lo stato dei selector nel flusso GPExe corrente.
+
+### Unchanged
+
+- I payload raw del provider, i dati PAS Connect e il file Excel canonico non vengono alterati.
+- Lo schema PAS Connect resta 12.
+- Daily Sync operativo avanzato 2026/2027, Drills Analysis GPExe, Match Cycle GPExe e backfill completo 2025/2026 restano fuori dalla release.
+
+## PAS v4.17.4 - 2026-08-14
+
+### Fixed
+
+- Ripulita la Dashboard dalle metriche completamente `N/D`, ora raccolte in un expander dedicato; i selector di dettaglio e Session Report mostrano soltanto metriche disponibili.
+- Resi coerenti i colori delle Dynamic Speed Zones tra grafici e contesti GPExe.
+- Reso visibile Team 469 / 2025/2026 tramite discovery dei dati locali, senza dipendenza esclusiva dalla sync history.
+- Mantenute disponibili le TeamSession locali quando la selezione corrente è vuota, senza applicare un implicit all.
+- Separato lo stato del multiselect per Team/stagione e stabilizzato il contratto frontend con token stringa e stato canonico `list[int]`.
+- Corretto lo stacking dei menu BaseWeb sopra il pannello Settings.
+
+### Improved
+
+- Distinti esplicitamente l'insieme delle TeamSession locali disponibili e il sottoinsieme selezionato dall'utente.
+- Rafforzato lo switch tra Team 543 / 2026/2027 e Team 469 / 2025/2026, preservando soltanto selezioni compatibili con il contesto.
+
+### Unchanged
+
+- Nessuna modifica allo schema, al database PAS Connect o al file Excel incluso.
+- Nessuna modifica alla source policy delle metriche e nessuna nuova sync inclusa nella release.
+
 ## PAS v4.17.3 - 2026-08-14
 
 ### Added

@@ -62,8 +62,8 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeRESTClient, GPExeRESTService, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, retry_sync_session, retry_sync_errors, SyncRequest, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS, format_metric_threshold
-from pas_connect.pas_bridge import available_sessions, available_contexts, available_athletes, has_compatible_performance_rows
+from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeRESTClient, GPExeRESTService, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, retry_sync_session, retry_sync_errors, run_daily_sync, SyncRequest, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS, format_metric_threshold
+from pas_connect.pas_bridge import available_sessions, available_contexts, available_athletes, format_gpexe_context_label, has_compatible_performance_rows
 from pas_connect.mapper import map_team_session, map_graphql_athlete, map_graphql_athlete_session
 from pas_connect.endpoints import TEAMS
 from pas_connect.catalog_ui import render_metric_catalog_section
@@ -76,7 +76,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
 
 st.markdown(
     """
@@ -384,6 +383,14 @@ st.markdown(
         font-size: 2.3rem !important;
         font-weight: 800 !important;
     }
+
+    /* Settings e i menu BaseWeb usano portal fixed separati allo stesso livello.
+       Eleva soltanto il portal che contiene vere option. */
+    body > div[style*="position: fixed"][style*="pointer-events: none"]:has(
+        [data-baseweb="popover"] [role="option"]
+    ) {
+        z-index: 1000061 !important;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -460,6 +467,30 @@ def fmt(value: float, decimals: int = 0) -> str:
     if pd.isna(value):
         return "N/D"
     return f"{value:.{decimals}f}".replace(".", ",")
+
+
+def metric_has_context_values(
+    frame: pd.DataFrame,
+    spec: dict,
+) -> bool:
+    """Una metrica presentazionale e disponibile se ha almeno un numero valido."""
+    column = spec.get("column")
+    if not column or column not in frame.columns:
+        return False
+    return pd.to_numeric(frame[column], errors="coerce").notna().any()
+
+
+def sync_gpexe_session_widget_state(widget_key: str) -> None:
+    """Propaga la selezione del widget contestuale prima del rerun Streamlit."""
+    st.session_state["pas_gpexe_active_session_ids"] = [
+        int(session_id) for session_id in st.session_state.get(widget_key, [])
+    ]
+
+
+def set_gpexe_session_widget_state(widget_key: str, session_tokens: tuple[str, ...]) -> None:
+    """Imposta esplicitamente zero o tutte le TeamSession del contesto corrente."""
+    st.session_state[widget_key] = list(session_tokens)
+    sync_gpexe_session_widget_state(widget_key)
 
 
 def metric_decimals(metric_name: str) -> int:
@@ -2887,20 +2918,26 @@ with database_column:
             prefer_gpexe_api = st.session_state.get("pas_gpexe_input_mode", "API sincronizzata") == "API sincronizzata"
             if "pas_gpexe_active_session_ids" not in st.session_state:
                 initial_contexts = available_contexts(gpexe_api_database)
-                initial_context_index = int(st.session_state.get("pas_gpexe_local_context_index", 0) or 0)
-                initial_context = (
-                    initial_contexts[initial_context_index]
-                    if 0 <= initial_context_index < len(initial_contexts) else None
-                )
-                st.session_state["pas_gpexe_active_session_ids"] = [
-                    int(item["provider_session_id"])
-                    for item in available_sessions(
-                        gpexe_api_database,
-                        team_id=int(initial_context["team_id"]) if initial_context else None,
-                        season=str(initial_context["season"]) if initial_context else None,
-                        ready_only=bool(initial_context),
+                initial_context_by_key = {
+                    (int(item["team_id"]), str(item["season"])): item
+                    for item in initial_contexts
+                }
+                initial_context_key = st.session_state.get("pas_gpexe_local_context")
+                if initial_context_key not in initial_context_by_key:
+                    legacy_context_key = (
+                        st.session_state.get("pas_gpexe_local_team_id"),
+                        st.session_state.get("pas_gpexe_local_season"),
                     )
-                ]
+                    initial_context_key = (
+                        legacy_context_key if legacy_context_key in initial_context_by_key
+                        else next(iter(initial_context_by_key), None)
+                    )
+                    if initial_context_key is not None:
+                        st.session_state["pas_gpexe_local_context"] = initial_context_key
+                initial_context = initial_context_by_key.get(initial_context_key)
+                # Nessuna selezione implicita: l'utente sceglie una o più sedute,
+                # oppure usa esplicitamente "Seleziona tutte".
+                st.session_state["pas_gpexe_active_session_ids"] = []
             selected_api_sessions = st.session_state.get("pas_gpexe_active_session_ids", [])
             gpexe_api_ready = bool(selected_api_sessions) and gpexe_api_has_sessions and has_compatible_performance_rows(
                 gpexe_api_database,
@@ -3111,48 +3148,122 @@ with settings_column:
                 selected_local_team = None
                 selected_local_season = None
                 if api_contexts:
-                    context_labels = [f"Team {item['team_id']} · {item['season']}" for item in api_contexts]
-                    context_index = st.selectbox(
-                        "Contesto GPExe locale", range(len(api_contexts)),
-                        format_func=lambda index: context_labels[index], key="pas_gpexe_local_context_index",
+                    context_by_key = {
+                        (int(item["team_id"]), str(item["season"])): item
+                        for item in api_contexts
+                    }
+                    context_options = tuple(context_by_key)
+                    context_key = "pas_gpexe_local_context"
+                    if st.session_state.get(context_key) not in context_by_key:
+                        st.session_state[context_key] = context_options[0]
+                    selected_context = st.selectbox(
+                        "Contesto GPExe locale", context_options,
+                        format_func=lambda value: format_gpexe_context_label(
+                            value[0], value[1], context_by_key[value].get("team_name")
+                        ),
+                        key=context_key,
                     )
-                    selected_local_team = int(api_contexts[context_index]["team_id"])
-                    selected_local_season = str(api_contexts[context_index]["season"])
+                    selected_local_team, selected_local_season = selected_context
                     st.session_state["pas_gpexe_local_team_id"] = selected_local_team
                     st.session_state["pas_gpexe_local_season"] = selected_local_season
                     st.session_state["pas_gpexe_context_athletes"] = available_athletes(
                         api_database_path,
                         team_id=selected_local_team,
                         season=selected_local_season,
+                        selected_session_ids=st.session_state.get(
+                            "pas_gpexe_active_session_ids", []
+                        ),
                     )
                 api_sessions = available_sessions(
                     api_database_path, team_id=selected_local_team,
                     season=selected_local_season, ready_only=bool(api_contexts),
+                    dashboard_only=True,
                 )
                 if st.session_state.get("pas_gpexe_input_mode") == "API sincronizzata":
                     if api_sessions:
                         session_by_id = {int(item["provider_session_id"]): item for item in api_sessions}
-                        session_options = tuple(session_by_id)
-                        session_key = "pas_gpexe_active_session_ids"
-                        st.session_state[session_key] = [
-                            int(sid) for sid in st.session_state.get(session_key, session_options)
+                        available_session_ids = tuple(session_by_id)
+                        session_option_by_token = {
+                            str(session_id): session_by_id[session_id]
+                            for session_id in available_session_ids
+                        }
+                        available_session_tokens = tuple(session_option_by_token)
+                        canonical_session_key = "pas_gpexe_active_session_ids"
+                        canonical_selected_ids = [
+                            int(sid)
+                            for sid in st.session_state.get(canonical_session_key, [])
                             if int(sid) in session_by_id
                         ]
-                        selected_ids = st.multiselect(
+                        normalized_season = re.sub(
+                            r"[^A-Za-z0-9]+", "_", str(selected_local_season)
+                        ).strip("_") or "season"
+                        session_widget_key = (
+                            f"pas_gpexe_session_selector_{selected_local_team}_"
+                            f"{normalized_season}"
+                        )
+                        previous_context_key = "pas_gpexe_previous_session_context"
+                        current_context = (selected_local_team, selected_local_season)
+                        context_changed = (
+                            st.session_state.get(previous_context_key) != current_context
+                        )
+                        if context_changed or session_widget_key not in st.session_state:
+                            st.session_state[session_widget_key] = [
+                                str(session_id) for session_id in canonical_selected_ids
+                            ]
+                        else:
+                            compatible_widget_tokens = [
+                                str(token)
+                                for token in st.session_state[session_widget_key]
+                                if str(token) in session_option_by_token
+                            ]
+                            if compatible_widget_tokens != st.session_state[session_widget_key]:
+                                st.session_state[session_widget_key] = compatible_widget_tokens
+                        st.session_state[previous_context_key] = current_context
+                        def format_session_token(token: str) -> str:
+                            session = session_option_by_token.get(str(token), {})
+                            session_id = str(token)
+                            session_date = str(session.get("start_timestamp") or "")[:10]
+                            session_name = str(
+                                session.get("session_name") or f"TeamSession {session_id}"
+                            ).strip()
+                            return (
+                                f"{session_date} · {session_name}"
+                                if session_date else session_name
+                            )
+
+                        widget_selected_tokens = st.multiselect(
                             "TeamSession locali attive nel PAS",
-                            options=session_options,
-                            format_func=lambda sid: (
-                                f"{str(session_by_id[sid].get('start_timestamp') or '')[:10]} · "
-                                f"{session_by_id[sid].get('session_name') or sid}"
-                            ),
-                            key=session_key,
+                            options=available_session_tokens,
+                            format_func=format_session_token,
+                            key=session_widget_key,
+                            on_change=sync_gpexe_session_widget_state,
+                            args=(session_widget_key,),
                             help="Seleziona una o più TeamSession locali da usare nel Dashboard.",
+                        )
+                        selected_session_ids = [
+                            int(token) for token in widget_selected_tokens
+                        ]
+                        st.session_state[canonical_session_key] = selected_session_ids
+                        select_all_column, clear_column = st.columns(2)
+                        select_all_column.button(
+                            "Seleziona tutte",
+                            key=f"{session_widget_key}_select_all",
+                            on_click=set_gpexe_session_widget_state,
+                            args=(session_widget_key, available_session_tokens),
+                            use_container_width=True,
+                        )
+                        clear_column.button(
+                            "Azzera selezione",
+                            key=f"{session_widget_key}_clear",
+                            on_click=set_gpexe_session_widget_state,
+                            args=(session_widget_key, ()),
+                            use_container_width=True,
                         )
                         st.success(
                             f"Dati GPExe READY disponibili: {len(api_sessions)} TeamSession · "
-                            f"{len(selected_ids)} selezionate."
+                            f"{len(selected_session_ids)} selezionate."
                         )
-                        if not selected_ids:
+                        if not selected_session_ids:
                             st.info("Seleziona almeno una TeamSession locale per usare i dati GPExe.")
                     else:
                         st.info("Nessuna TeamSession GPExe presente nel database PAS Connect locale.")
@@ -3683,6 +3794,74 @@ with settings_column:
             )
 
             with pas_connect_main:
+                st.divider()
+                st.markdown("##### Daily Sync GPExe")
+                st.caption("Contesto: SERIE B · 2026/2027")
+                st.caption(
+                    "Aggiorna le sessioni recenti GPExe della stagione 2026/2027. "
+                    "Lo storico 2025/2026 non viene elaborato."
+                )
+                daily_summary = st.session_state.get("pas_gpexe_daily_sync_summary")
+                if isinstance(daily_summary, dict):
+                    daily_columns = st.columns(6)
+                    daily_columns[0].metric("Nuove", int(daily_summary.get("new_found") or 0))
+                    daily_columns[1].metric("Candidate", int(daily_summary.get("candidates") or 0))
+                    daily_columns[2].metric("Tentate", int(daily_summary.get("attempted") or 0))
+                    daily_columns[3].metric("READY", int(daily_summary.get("ready_published") or 0))
+                    daily_columns[4].metric("Deferred 202", int(daily_summary.get("deferred_202") or 0))
+                    daily_columns[5].metric("Errori", int(daily_summary.get("errors") or 0))
+                    st.caption(
+                        f"Già complete: {int(daily_summary.get('already_complete') or 0)} · "
+                        f"Exercise/Drill non prioritari: "
+                        f"{int(daily_summary.get('technical_not_prioritized') or 0)}"
+                    )
+                    if daily_summary.get("next_retry_at"):
+                        st.info(f"Prossimo retry disponibile: {daily_summary['next_retry_at']}")
+                if st.button(
+                    "Sincronizza nuove sessioni",
+                    key="pas_gpexe_daily_sync",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    daily_client = None
+                    try:
+                        daily_config = GPExeConfig(
+                            base_url=str(gpexe_secrets.get("base_url", gpexe_base_url)).strip(),
+                            username=str(gpexe_secrets.get("username", "")).strip(),
+                            password=str(gpexe_secrets.get("password", "")),
+                            timeout_seconds=120.0,
+                            verify_tls=True,
+                        )
+                        daily_config.validate(require_credentials=True)
+                        daily_client = GPExeRESTClient(daily_config)
+                        daily_database = PASConnectDatabase.default()
+                        daily_progress = st.progress(0, text="Aggiornamento catalogo...")
+
+                        def _daily_progress(stage, index, total, message):
+                            if stage == "catalog":
+                                daily_progress.progress(5, text="Aggiornamento catalogo")
+                            elif stage == "plan":
+                                daily_progress.progress(10, text=message)
+                            else:
+                                percent = 10 + int((index / max(1, total)) * 90)
+                                daily_progress.progress(percent, text=message)
+
+                        daily_result = run_daily_sync(
+                            daily_client,
+                            daily_database,
+                            progress=_daily_progress,
+                        )
+                        st.session_state["pas_gpexe_daily_sync_summary"] = dict(
+                            daily_result.summary
+                        )
+                        daily_progress.progress(100, text="Daily Sync completato")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Daily Sync GPExe non riuscito: {exc}")
+                    finally:
+                        if daily_client is not None:
+                            daily_client.clear_token()
+
                 st.divider()
                 st.markdown("##### Sincronizzazione completa")
                 st.caption(
@@ -5557,7 +5736,6 @@ if page == "📊 Period Load":
         "Return to Play",
         "Active Recovery",
         "Different Training",
-        "Different Traning",
         "Match",
         "Recovery",
     }
@@ -9529,11 +9707,26 @@ if dashboard_uses_gpexe_distance:
         if spec.get("column") in gpexe_scalar_columns
     }
     dashboard_contextual_metric_specs.update(dashboard_dynamic_metric_specs)
-    if "dashboard_overview_metrics" in st.session_state:
-        st.session_state["dashboard_overview_metrics"] = [
-            name for name in st.session_state["dashboard_overview_metrics"]
-            if name in dashboard_contextual_metric_specs
-        ]
+
+dashboard_available_metric_specs = dict(dashboard_contextual_metric_specs)
+dashboard_unavailable_metric_specs = {}
+if dashboard_uses_gpexe_distance:
+    dashboard_available_metric_specs = {
+        name: spec
+        for name, spec in dashboard_contextual_metric_specs.items()
+        if metric_has_context_values(dashboard_gpexe_overview_current, spec)
+    }
+    dashboard_unavailable_metric_specs = {
+        name: spec
+        for name, spec in dashboard_contextual_metric_specs.items()
+        if name not in dashboard_available_metric_specs
+    }
+
+if "dashboard_overview_metrics" in st.session_state:
+    st.session_state["dashboard_overview_metrics"] = [
+        name for name in st.session_state["dashboard_overview_metrics"]
+        if name in dashboard_available_metric_specs
+    ]
 
 # ---------------------------------------------------------
 # 3. PANORAMICA
@@ -9550,7 +9743,17 @@ overview_mode = st.sidebar.radio(
 
 overview_player = None
 if overview_mode == "Player Overview":
-    all_players = sorted(raw["Athlete"].dropna().unique())
+    if (
+        using_gpexe
+        and st.session_state.get("pas_gpexe_input_mode", "API sincronizzata")
+        == "API sincronizzata"
+    ):
+        all_players = sorted({
+            row["athlete_label"]
+            for row in st.session_state.get("pas_gpexe_context_athletes", [])
+        })
+    else:
+        all_players = sorted(raw["Athlete"].dropna().unique())
     overview_player_key = "dashboard_overview_player"
     if st.session_state.get(overview_player_key) not in all_players:
         if all_players:
@@ -9566,8 +9769,8 @@ if overview_mode == "Player Overview":
 
 overview_metric_names = st.sidebar.multiselect(
     "Metriche della panoramica",
-    list(dashboard_contextual_metric_specs.keys()),
-    default=list(dashboard_contextual_metric_specs.keys()),
+    list(dashboard_available_metric_specs.keys()),
+    default=list(dashboard_available_metric_specs.keys()),
     key="dashboard_overview_metrics",
 )
 
@@ -9584,8 +9787,8 @@ session_report_title = st.sidebar.text_input(
 
 session_report_metrics = st.sidebar.multiselect(
     "Metriche nel Professional Session Report",
-    list(dashboard_contextual_metric_specs.keys()),
-    default=list(dashboard_contextual_metric_specs.keys()),
+    list(dashboard_available_metric_specs.keys()),
+    default=list(dashboard_available_metric_specs.keys()),
     help=(
         "Il report utilizza un unico foglio A4 orizzontale "
         "con Team Average, Full Training e Different Training."
@@ -9606,9 +9809,7 @@ session_full_training_raw = session_day_raw[
 ].copy()
 
 session_different_training_raw = session_day_raw[
-    session_day_raw["Drill"].isin(
-        ["Different Training", "Different Traning"]
-    )
+    session_day_raw["Drill"].eq("Different Training")
 ].copy()
 
 session_report_data = aggregate_player_day(
@@ -9846,7 +10047,6 @@ accumulation_drills = {
     "Return to Play",
     "Active Recovery",
     "Different Training",
-    "Different Traning",
     "Match",
     "Recovery",
 }
@@ -9917,7 +10117,7 @@ highlight_overview_player = st.sidebar.checkbox(
 st.sidebar.divider()
 st.sidebar.subheader("Grafici di dettaglio")
 
-detail_metric_options = list(dashboard_contextual_metric_specs.keys())
+detail_metric_options = list(dashboard_available_metric_specs.keys())
 detail_metrics_key = "dashboard_detail_metrics"
 st.session_state[detail_metrics_key] = [
     name
@@ -10150,19 +10350,14 @@ if dashboard_uses_gpexe_distance:
                     f"La sessione GPExe non contiene una metrica "
                     f"{coverage_row['Metrica']} utilizzabile."
                 )
-        elif coverage_row["Stato"] == "VERIFIED":
-            definition = next(
-                (item for item in OVERVIEW_METRICS if item.display == coverage_row["Metrica"]),
-                None,
-            )
-            if definition is not None and (
-                definition.column not in dashboard_gpexe_overview_current
-                or dashboard_gpexe_overview_current[definition.column].isna().all()
-            ):
-                st.info(
-                    f"La sessione GPExe non contiene una metrica "
-                    f"{coverage_row['Metrica']} utilizzabile."
-                )
+
+if dashboard_unavailable_metric_specs:
+    with st.expander(
+        f"Metriche non disponibili ({len(dashboard_unavailable_metric_specs)})",
+        expanded=False,
+    ):
+        for unavailable_metric_name in dashboard_unavailable_metric_specs:
+            st.markdown(f"- {unavailable_metric_name} — N/D")
 
 metric_groups = {
     "Internal Load": [
@@ -10188,7 +10383,18 @@ metric_groups = {
     ],
 }
 if dashboard_dynamic_metric_specs:
-    metric_groups["Speed Zone Distance"] = list(dashboard_dynamic_metric_specs)
+    dynamic_metric_names = set(dashboard_dynamic_metric_specs)
+    metric_groups = {
+        group_name: [
+            name for name in group_metrics
+            if name not in dynamic_metric_names
+        ]
+        for group_name, group_metrics in metric_groups.items()
+    }
+    metric_groups["Speed Zone Distance"] = [
+        name for name in dashboard_dynamic_metric_specs
+        if name in dashboard_available_metric_specs
+    ]
 
 metric_reference_rows = []
 

@@ -185,8 +185,14 @@ def test_same_provider_athlete_supports_multiple_teams_and_seasons_idempotently(
             "SELECT COUNT(*) FROM gpexe_athlete_session_kpis"
         ).fetchone()[0] == 4
     assert [row["provider_player_id"] for row in available_athletes(
-        database.path, team_id=469, season="2025/2026",
+        database.path, team_id=469, season="2025/2026", selected_session_ids=[10],
     )] == [shared_id]
     assert [row["provider_player_id"] for row in available_athletes(
-        database.path, team_id=543, season="2026/2027",
+        database.path, team_id=543, season="2026/2027", selected_session_ids=[11],
+    )] == [shared_id]
+    assert available_athletes(
+        database.path, team_id=543, season="2026/2027", selected_session_ids=[],
+    ) == []
+    assert [row["provider_player_id"] for row in available_athletes(
+        database.path, team_id=543, season="2026/2027", selected_session_ids=[10, 11],
     )] == [shared_id]

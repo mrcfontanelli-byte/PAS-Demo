@@ -5,7 +5,7 @@ def test_v391_dashboard_and_pas_connect_ui_contract():
     app = Path("app.py").read_text(encoding="utf-8")
     version = Path("modules/version.py").read_text(encoding="utf-8")
 
-    assert 'APP_BUILD_VERSION = "4.17.3"' in version
+    assert 'APP_BUILD_VERSION = "4.18.1"' in version
     assert '"Aggiungi box plot al report"' in app
     assert '"Includi nel report PDF"' not in app
     assert 'with st.expander("Visualizza dettagli giocatori", expanded=False):' in app

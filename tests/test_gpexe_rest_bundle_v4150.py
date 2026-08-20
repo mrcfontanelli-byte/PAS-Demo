@@ -55,6 +55,7 @@ def complete_client(count=27):
     team["counts"]["n_tracks"] = count
     base = fixture("gpexe_rest_athlete_session_anonymized.json")
     ids = list(range(910001, 910001 + count))
+    team["table_data"]["athlete_sessions"] = [{"id": value} for value in ids]
     details = {}
     for index, session_id in enumerate(ids):
         row = copy.deepcopy(base)
@@ -88,12 +89,38 @@ def test_duplicate_ids_fail_before_detail_requests():
     assert any("duplicati" in message for message in messages(result))
 
 
-def test_wrong_team_session_reference_makes_bundle_incomplete():
+def test_internal_team_session_reference_is_provenance_not_membership_gate():
     client = complete_client(1)
     client.details[910001]["teamsession"] = 999999
     result = GPExeRESTService(client).build_team_session_bundle(143261)
+    assert result.status == "READY"
+    session = result.bundle["athlete_sessions"][0]
+    assert session["provider_session_id"] == 999999
+    assert session["raw"]["teamsession"] == 999999
+    assert session["provenance"] == "gpexe_rest_athlete_session_detail"
+
+
+def test_detail_id_different_from_scoped_id_is_not_ready():
+    client = complete_client(1)
+    client.details[910001]["id"] = 910099
+    result = GPExeRESTService(client).build_team_session_bundle(143261)
     assert result.status == "INCOMPLETE"
-    assert any("TeamSession errata" in message for message in messages(result))
+    assert any("non presente nella lista" in message for message in messages(result))
+
+
+def test_scoped_and_aggregate_set_mismatch_is_not_ready_without_detail_requests():
+    client = complete_client(2)
+    client.team["table_data"]["athlete_sessions"] = [{"id": 910001}, {"id": 910099}]
+    result = GPExeRESTService(client).build_team_session_bundle(143261)
+    assert result.status == "INCOMPLETE"
+    assert result.bundle is None
+    assert not any(call[0] == "detail" for call in client.calls)
+    diagnostic = next(
+        item for item in result.diagnostics
+        if item["stage"] == "athlete_session_membership"
+    )
+    assert diagnostic["scoped_only_count"] == 1
+    assert diagnostic["aggregate_only_count"] == 1
 
 
 def test_missing_track_makes_bundle_incomplete():
@@ -201,13 +228,13 @@ def test_rate_limit_error_from_list_is_failed_without_retry_in_service():
 def test_team_session_202_is_processing_incomplete_without_polling():
     client = FakeRESTClient(team=RESTProcessingResponse(
         payload={"status": "processing"}, retry_after_seconds=5.0,
-    ))
+    ), ids=RESTProcessingResponse(payload={"status": "processing"}))
     result = GPExeRESTService(client).build_team_session_bundle(143261)
     assert result.status == "INCOMPLETE"
     assert result.processing is True
     assert result.bundle is None
     assert result.diagnostics[0]["retry_after_seconds"] == 5.0
-    assert [call[0] for call in client.calls] == ["team"]
+    assert [call[0] for call in client.calls] == ["team", "list"]
 
 
 def test_one_athlete_session_202_is_processing_incomplete_without_polling():

@@ -1,28 +1,31 @@
 PAS RELEASE MANIFEST
-Version: 4.17.3
-Source archive: PAS_DEMO_v4.17.3.zip
-Build date: 2026-08-14
+Version: 4.18.1
+Source archive: PAS_DEMO_v4.18.1.zip
+Build date: 2026-08-20
 
 IMPLEMENTATION
-- REST athlete roster as the primary identity source, fetched once per run.
-- Deduplicated Athlete detail fallback for target IDs missing from the roster.
-- Identity-only persistence independent from TeamSession readiness and publish.
-- Shared REST/GraphQL no-downgrade identity merge with bounded provenance.
-- Real athlete names automatically available to the Dashboard.
+- GPExe Daily Sync for Team 543 / 2026/2027 with a bounded rolling window.
+- Daily catalog refresh, deterministic planner and retry cooldown.
+- Full Training priority before exercise and drill sessions.
+- REST aggregate plus elementary fallback without polling.
+- Immediate Dashboard publication for READY canonical sessions.
+- Session-scoped Player selector with no implicit-all for an empty selection.
+- Decorated GPExe category parsing, including [FULL TRAINING].
 
 UNCHANGED
-- PAS statistics and Excel semantics.
+- Metric source policy, PAS statistics and Excel semantics.
 - PAS Connect schema version 12.
+- Historical Sync 2025/2026 remains a separate progressive workflow.
 - Included Excel database contents.
+- Provider raw payloads and canonical category values.
 - Streamlit Cloud compatibility.
 
 VERIFICATION
-- Targeted v4.17.3 tests: 35 passed.
-- Full automated suite: 389 passed.
+- Full automated suite: 446 passed.
 - Python compileall and clean app import: OK.
 - validate_release.py and git diff --check: OK.
 - SQLite integrity_check: ok.
 - PAS Connect database SHA-256:
-  d2c3e9ae5bc35aafe29966706ea1fa57654133de60c703b1c378714b3bfb228a
+  9892940d9ba408a8091b69c2f71dfd9110845f63523dc1562857414de6b97d2f
 - Included Excel database SHA-256:
   9efa8e9ccfcb6bcff55b5f73407fc1b9e449c3a0633ee8f5a525d5a72d63010b

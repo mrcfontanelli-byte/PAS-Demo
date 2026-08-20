@@ -385,6 +385,7 @@ def run_rest_identity_sync(
 def run_rest_sync(
     service: GPExeRESTService, database: "PASConnectDatabase", request: SyncRequest,
     *, progress: Callable[[SyncProgressEvent], None] | None = None,
+    identity_state: RESTIdentitySyncResult | None = None,
 ) -> SyncRunResult:
     """Full Sync REST seriale, privo di fallback e polling impliciti."""
     from .database import PASConnectDatabase
@@ -410,6 +411,7 @@ def run_rest_sync(
         service.client,
         database,
         database.athlete_ids_for_sessions(session_ids),
+        state=identity_state,
     )
     results: list[SessionSyncResult] = []
     for session_id in session_ids:
@@ -423,7 +425,11 @@ def run_rest_sync(
             item = SessionSyncResult(session_id, "SKIPPED", "READY", diagnostics=tuple(trace))
         else:
             try:
-                built = service.build_team_session_bundle(session_id, all_params=True)
+                fallback_metadata = database.rest_team_session_metadata(session_id)
+                build_options: dict[str, Any] = {"all_params": True}
+                if fallback_metadata is not None:
+                    build_options["team_session_metadata"] = fallback_metadata
+                built = service.build_team_session_bundle(session_id, **build_options)
                 for diagnostic in built.diagnostics:
                     emit("REST-DIAGNOSTIC", diagnostic)
                 bundle_sessions = tuple((built.bundle or {}).get("athlete_sessions") or ())

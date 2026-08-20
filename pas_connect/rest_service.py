@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from .rest_client import GPExeRESTClient, RESTProcessingResponse
 from .rest_mapper import (
@@ -16,6 +16,62 @@ REQUIRED_PROVIDER_KPIS = (
     "distance", "duration", "acceleration_events", "deceleration_events", "speed_events",
 )
 BUNDLE_STATUSES = {"READY", "INCOMPLETE", "FAILED"}
+BUNDLE_PROVENANCE_AGGREGATE = "rest_v2_aggregate"
+BUNDLE_PROVENANCE_ELEMENTARY = "rest_v2_elementary"
+
+
+def _canonical_bundle(
+    requested_id: int,
+    team: Mapping[str, Any],
+    session_ids: Sequence[int],
+    sessions: Sequence[Mapping[str, Any]],
+    *,
+    provenance: str,
+) -> Mapping[str, Any]:
+    return {
+        "provider": "gpexe", "provider_contract": "rest_v2",
+        "provider_session_id": int(requested_id),
+        "team_session": dict(team),
+        "athlete_session_ids": tuple(int(value) for value in session_ids),
+        "athlete_sessions": tuple(sessions),
+        "provenance": provenance,
+    }
+
+
+def build_rest_elementary_bundle(
+    team_session_metadata: Mapping[str, Any],
+    athlete_session_ids: Sequence[int],
+    athlete_session_detail_payloads: Sequence[Mapping[str, Any]],
+) -> Mapping[str, Any]:
+    """Costruisce il modello canonico REST usando esclusivamente payload elementari."""
+    requested_id = int(team_session_metadata["provider_session_id"])
+    mapped = tuple(map_rest_athlete_session(payload) for payload in athlete_session_detail_payloads)
+    return _canonical_bundle(
+        requested_id, team_session_metadata, athlete_session_ids, mapped,
+        provenance=BUNDLE_PROVENANCE_ELEMENTARY,
+    )
+
+
+def _aggregate_athlete_session_ids(team: Mapping[str, Any]) -> tuple[int, ...] | None:
+    """Estrae gli ID dall'aggregate solo quando la relativa struttura e disponibile."""
+    raw = team.get("raw")
+    if not isinstance(raw, Mapping):
+        return None
+    table_data = raw.get("table_data")
+    if not isinstance(table_data, Mapping):
+        return None
+    rows = table_data.get("athlete_sessions")
+    if not isinstance(rows, list):
+        return None
+    result: list[int] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            return None
+        try:
+            result.append(int(row["id"]))
+        except (KeyError, TypeError, ValueError):
+            return None
+    return tuple(result)
 
 
 @dataclass(frozen=True)
@@ -43,6 +99,7 @@ class GPExeRESTService:
         all_params: bool = True,
         require_athlete: bool = True,
         require_track: bool = True,
+        team_session_metadata: Mapping[str, Any] | None = None,
     ) -> RESTBundleResult:
         requested_id = self.client._positive_id(team_session_id, "TeamSession")
         diagnostics: list[Mapping[str, Any]] = []
@@ -51,31 +108,56 @@ class GPExeRESTService:
             raw_team = self.client.team_session(requested_id, all_params=all_params)
         except Exception as exc:
             return self._failed("team_session", exc, diagnostics)
-        if isinstance(raw_team, RESTProcessingResponse):
-            return self._processing("team_session", raw_team, diagnostics)
-        try:
-            team = map_rest_team_session(raw_team)
-        except Exception as exc:
-            return self._failed("team_session_mapping", exc, diagnostics)
-        if team["provider_session_id"] != requested_id:
-            diagnostics.append(self._diagnostic(
-                "team_session_validation", "ERROR", "TeamSession ID non coerente.",
-            ))
-            return RESTBundleResult("FAILED", False, None, tuple(diagnostics))
+        aggregate_processing = isinstance(raw_team, RESTProcessingResponse)
+        if aggregate_processing:
+            diagnostics.append(self._processing_diagnostic("team_session", raw_team))
+            team = dict(team_session_metadata or {})
+            if team and int(team.get("provider_session_id") or 0) != requested_id:
+                diagnostics.append(self._diagnostic(
+                    "team_session_metadata", "ERROR", "TeamSession metadata non coerente.",
+                ))
+                return RESTBundleResult("FAILED", False, None, tuple(diagnostics))
+        else:
+            try:
+                team = map_rest_team_session(raw_team)
+            except Exception as exc:
+                return self._failed("team_session_mapping", exc, diagnostics)
+            if team["provider_session_id"] != requested_id:
+                diagnostics.append(self._diagnostic(
+                    "team_session_validation", "ERROR", "TeamSession ID non coerente.",
+                ))
+                return RESTBundleResult("FAILED", False, None, tuple(diagnostics))
 
         try:
             raw_list = self.client.athlete_sessions(requested_id)
         except Exception as exc:
             return self._failed("athlete_session_list", exc, diagnostics)
         if isinstance(raw_list, RESTProcessingResponse):
-            partial = self._base_bundle(requested_id, team, (), ())
+            partial = self._base_bundle(requested_id, team, (), ()) if team else None
             return self._processing("athlete_session_list", raw_list, diagnostics, bundle=partial)
         try:
             session_ids = map_rest_athlete_session_list(raw_list)
         except Exception as exc:
             return self._failed("athlete_session_list_mapping", exc, diagnostics)
 
+        if not aggregate_processing:
+            aggregate_ids = _aggregate_athlete_session_ids(team)
+            if aggregate_ids is not None and (
+                len(aggregate_ids) != len(set(aggregate_ids))
+                or set(aggregate_ids) != set(session_ids)
+            ):
+                diagnostics.append(self._diagnostic(
+                    "athlete_session_membership", "ERROR",
+                    "Set AthleteSession scoped diverso dal set aggregate.",
+                    scoped_count=len(session_ids), aggregate_count=len(aggregate_ids),
+                    intersection_count=len(set(session_ids).intersection(aggregate_ids)),
+                    scoped_only_count=len(set(session_ids).difference(aggregate_ids)),
+                    aggregate_only_count=len(set(aggregate_ids).difference(session_ids)),
+                ))
+                return RESTBundleResult("INCOMPLETE", False, None, tuple(diagnostics))
+
         mapped_sessions: list[Mapping[str, Any]] = []
+        raw_sessions: list[Mapping[str, Any]] = []
         failed_ids = 0
         processing_ids = 0
         for athlete_session_id in session_ids:
@@ -89,6 +171,7 @@ class GPExeRESTService:
                     ))
                     continue
                 mapped_sessions.append(map_rest_athlete_session(raw_detail))
+                raw_sessions.append(raw_detail)
             except Exception as exc:
                 failed_ids += 1
                 diagnostics.append(self._diagnostic(
@@ -97,7 +180,22 @@ class GPExeRESTService:
                     error_type=type(exc).__name__,
                 ))
 
-        bundle = self._base_bundle(requested_id, team, tuple(session_ids), tuple(mapped_sessions))
+        if aggregate_processing:
+            if not team:
+                diagnostics.append(self._diagnostic(
+                    "team_session_metadata", "INCOMPLETE",
+                    "Metadata TeamSession locali non disponibili per il fallback elementare.",
+                ))
+                return RESTBundleResult("INCOMPLETE", True, None, tuple(diagnostics))
+            try:
+                bundle = build_rest_elementary_bundle(team, session_ids, raw_sessions)
+            except Exception as exc:
+                return self._failed("elementary_bundle_mapping", exc, diagnostics)
+        else:
+            bundle = _canonical_bundle(
+                requested_id, team, session_ids, mapped_sessions,
+                provenance=BUNDLE_PROVENANCE_AGGREGATE,
+            )
         issues = self._validate_bundle(
             bundle,
             require_athlete=require_athlete,
@@ -110,8 +208,10 @@ class GPExeRESTService:
                 "Uno o piÃ¹ dettagli AthleteSession non sono disponibili.",
                 failed_count=failed_ids, processing_count=processing_ids,
             ))
-        status = "READY" if not diagnostics else "INCOMPLETE"
-        return RESTBundleResult(status, processing_ids > 0, bundle, tuple(diagnostics))
+        blocking = [item for item in diagnostics if item.get("stage") != "team_session"]
+        status = "READY" if not blocking else "INCOMPLETE"
+        processing = processing_ids > 0 or (aggregate_processing and status != "READY")
+        return RESTBundleResult(status, processing, bundle, tuple(diagnostics))
 
     @staticmethod
     def _base_bundle(
@@ -120,14 +220,10 @@ class GPExeRESTService:
         session_ids: tuple[int, ...],
         sessions: tuple[Mapping[str, Any], ...],
     ) -> Mapping[str, Any]:
-        return {
-            "provider": "gpexe", "provider_contract": "rest_v2",
-            "provider_session_id": requested_id,
-            "team_session": team,
-            "athlete_session_ids": session_ids,
-            "athlete_sessions": sessions,
-            "provenance": "gpexe_rest_bundle_dry_run",
-        }
+        return _canonical_bundle(
+            requested_id, team, session_ids, sessions,
+            provenance=BUNDLE_PROVENANCE_AGGREGATE,
+        )
 
     def _validate_bundle(
         self,
@@ -176,11 +272,6 @@ class GPExeRESTService:
             if session_id not in expected_ids:
                 diagnostics.append(self._diagnostic(
                     "bundle_validation", "ERROR", "AthleteSession non presente nella lista.",
-                    provider_athlete_session_id=session_id,
-                ))
-            if session.get("provider_session_id") != requested_id:
-                diagnostics.append(self._diagnostic(
-                    "bundle_validation", "ERROR", "AthleteSession associata a TeamSession errata.",
                     provider_athlete_session_id=session_id,
                 ))
             if require_athlete and not (session.get("athlete") or {}).get("provider_player_id"):
@@ -256,10 +347,17 @@ class GPExeRESTService:
     def _processing_diagnostic(
         stage: str, response: RESTProcessingResponse, **context: Any,
     ) -> Mapping[str, Any]:
+        payload = response.payload if isinstance(response.payload, Mapping) else {}
         return {
             "stage": stage, "status": "PROCESSING", "message": response.state,
             "http_status": response.status,
             "retry_after_seconds": response.retry_after_seconds,
+            "task_id": response.task_id if response.task_id is not None else payload.get("task_id"),
+            "original_task_id": (
+                response.original_task_id
+                if response.original_task_id is not None
+                else payload.get("original_task_id")
+            ),
             **context,
         }
 

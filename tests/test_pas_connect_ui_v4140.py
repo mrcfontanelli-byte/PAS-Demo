@@ -12,7 +12,7 @@ def _app_source() -> str:
 def test_release_version_and_pas_connect_panels_are_declared_in_target_order():
     app = _app_source()
     version = (ROOT / "modules" / "version.py").read_text(encoding="utf-8")
-    assert 'APP_BUILD_VERSION = "4.17.3"' in version
+    assert 'APP_BUILD_VERSION = "4.18.1"' in version
 
     markers = (
         'pas_connect_main = st.container()',
@@ -139,9 +139,14 @@ def test_existing_streamlit_state_keys_are_not_duplicated():
 def test_local_sessions_default_to_explicit_selection_and_dashboard_uses_local_team():
     app = _app_source()
     assert 'if "pas_gpexe_active_session_ids" not in st.session_state:' in app
-    assert 'session_key = "pas_gpexe_active_session_ids"' in app
+    assert 'canonical_session_key = "pas_gpexe_active_session_ids"' in app
+    assert 'available_session_ids = tuple(session_by_id)' in app
+    assert 'session_option_by_token = {' in app
+    assert 'available_session_tokens = tuple(session_option_by_token)' in app
+    assert 'canonical_selected_ids = [' in app
+    assert 'options=available_session_tokens' in app
     assert 'default=defaults' not in app
-    assert 'f"{len(selected_ids)} selezionate."' in app
+    assert 'f"{len(selected_session_ids)} selezionate."' in app
     assert 'f"{len(selected_ids) or len(api_sessions)} selezionate."' not in app
     assert 'Seleziona almeno una TeamSession locale per usare i dati GPExe.' in app
     assert 'gpexe_api_ready = bool(selected_api_sessions)' in app
@@ -149,6 +154,33 @@ def test_local_sessions_default_to_explicit_selection_and_dashboard_uses_local_t
     assert 'st.session_state["pas_gpexe_local_season"] = selected_local_season' in app
     assert 'st.session_state.get("pas_gpexe_local_team_id")' in app
     assert 'if dashboard_session_ids else None' in app
+
+
+def test_local_context_uses_stable_identity_and_empty_selection_is_preserved():
+    app = _app_source()
+    assert 'context_key = "pas_gpexe_local_context"' in app
+    assert '"Contesto GPExe locale", context_options,' in app
+    assert "format_func=lambda value: format_gpexe_context_label(" in app
+    assert 'context_by_key[value].get("team_name")' in app
+    assert 'key="pas_gpexe_local_context_index"' not in app
+    assert 'previous_context_key = "pas_gpexe_previous_session_context"' in app
+    assert 'session_widget_key = (' in app
+    assert 'f"pas_gpexe_session_selector_{selected_local_team}_"' in app
+    assert 'key=session_widget_key' in app
+    assert 'key=canonical_session_key' not in app
+    assert 'on_change=sync_gpexe_session_widget_state' in app
+    assert 'args=(session_widget_key,)' in app
+    assert 'int(token) for token in widget_selected_tokens' in app
+    assert 'st.session_state[canonical_session_key] = selected_session_ids' in app
+    assert 'st.session_state.get(session_key, session_options)' not in app
+
+
+def test_baseweb_option_portal_is_above_settings_without_global_popover_override():
+    app = _app_source()
+    assert 'body > div[style*="position: fixed"][style*="pointer-events: none"]' in app
+    assert ':has(\n        [data-baseweb="popover"] [role="option"]' in app
+    assert 'z-index: 1000061 !important;' in app
+    assert 'div[data-baseweb="popover"] {' not in app
 
 
 def test_dashboard_player_widget_state_is_normalized_to_current_options():
