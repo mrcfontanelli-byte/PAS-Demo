@@ -20,10 +20,16 @@ CANONICAL_DASHBOARD_CATEGORIES = {
 
 
 def canonical_gpexe_dashboard_category(value: object) -> str | None:
-    """Riconosce soltanto le sette categorie provider verificate."""
+    """Riconosce categorie canoniche o un token iniziale ``[CATEGORIA]``."""
     if not isinstance(value, str):
         return None
-    key = " ".join(value.strip().upper().split())
+    normalized = value.strip()
+    if normalized.startswith("["):
+        closing = normalized.find("]")
+        if closing <= 1:
+            return None
+        normalized = normalized[1:closing]
+    key = " ".join(normalized.upper().split())
     return CANONICAL_DASHBOARD_CATEGORIES.get(key)
 
 

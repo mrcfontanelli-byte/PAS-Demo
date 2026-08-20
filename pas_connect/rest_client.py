@@ -19,6 +19,7 @@ from .endpoints import (
     ATHLETE_SESSION_DETAIL,
     AUTH_TOKEN,
     TEAMS,
+    TEAM_SESSIONS,
     TEAM_SESSION_ATHLETES,
     TEAM_SESSION_DETAIL,
     Endpoint,
@@ -127,6 +128,15 @@ class GPExeRESTClient:
     def teams(self) -> Any:
         """Restituisce le anagrafiche Team REST account-level."""
         return self._request(TEAMS)
+
+    def team_sessions_page(self, *, page: int = 1, page_size: int = 500) -> Any:
+        """Restituisce una pagina pubblica del catalogo TeamSession REST."""
+        if int(page) <= 0 or int(page_size) <= 0:
+            raise ValueError("Pagina e page size TeamSession devono essere positivi.")
+        return self._request(
+            TEAM_SESSIONS,
+            query={"page": int(page), "page_size": int(page_size), "limit": int(page_size)},
+        )
 
     def athlete(self, athlete_id: int) -> Any:
         """Restituisce l'identita di un singolo atleta REST."""

@@ -6,6 +6,7 @@ import re
 from typing import Any, Iterable, Mapping
 
 from modules.session_categories import canonical_session_category
+from .dashboard_sessions import canonical_gpexe_dashboard_category
 from .exceptions import MappingError
 
 
@@ -20,6 +21,13 @@ def _normalize_season(value: object) -> object:
     text = str(value or "").strip()
     match = re.fullmatch(r"(\d{4})\s*[-/ ]\s*(\d{4})", text)
     return f"{match.group(1)}/{match.group(2)}" if match else (text or None)
+
+
+def _mapped_session_category(value: object) -> object:
+    canonical = canonical_gpexe_dashboard_category(value)
+    if isinstance(value, str) and value.lstrip().startswith("[") and canonical is not None:
+        return canonical
+    return canonical_session_category(value)
 
 
 def map_team(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -118,10 +126,11 @@ def map_graphql_athlete_session(
 
 
 def map_category(payload: Mapping[str, Any]) -> dict[str, Any]:
+    raw_name = str(_required(payload, "name"))
     return {
         "provider": "gpexe",
         "provider_category_id": int(_required(payload, "id")),
-        "category_name": canonical_session_category(str(_required(payload, "name"))),
+        "category_name": _mapped_session_category(raw_name),
         "team_id": payload.get("team"),
         "provider_color": payload.get("color"),
     }
@@ -141,18 +150,21 @@ def map_team_session(payload: Mapping[str, Any]) -> dict[str, Any]:
     session_id = int(_required(payload, "id"))
     category = payload.get("category")
     category_id = category.get("id") if isinstance(category, Mapping) else category
-    category_name = canonical_session_category(
-        category.get("name") if isinstance(category, Mapping) else category
-    )
+    raw_category_name = category.get("name") if isinstance(category, Mapping) else category
+    category_name = _mapped_session_category(raw_category_name)
     duration = payload.get("duration")
     return {
         "provider": "gpexe",
         "provider_session_id": session_id,
         "team_id": payload.get("team"),
         "category_id": category_id if isinstance(category_id, (int, float)) else None,
-        "session_name": canonical_session_category(
-            str(payload.get("name") or category_name or payload.get("nature") or "").strip()
-        ) or f"GPExe Session {session_id}",
+        "session_name": (
+            _mapped_session_category(payload.get("name"))
+            or canonical_session_category(
+                str(payload.get("name") or category_name or payload.get("nature") or "").strip()
+            )
+            or f"GPExe Session {session_id}"
+        ),
         "notes": payload.get("notes"),
         "start_timestamp": payload.get("startTimestamp") or payload.get("start_timestamp"),
         "end_timestamp": payload.get("end_timestamp"),

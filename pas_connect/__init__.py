@@ -30,6 +30,12 @@ from .historical_sync import (
     plan_historical_sync, run_historical_performance_batch, select_historical_batch,
     speed_profile_state, sync_historical_team_session_catalog,
 )
+from .daily_sync import (
+    DAILY_SEASON, DAILY_TEAM_ID, MAX_DAILY_ATTEMPTS, WINDOW_DAYS,
+    DailyCatalogResult, DailySyncAction, DailySyncAttempt, DailySyncCandidate,
+    DailySyncPlan, DailySyncResult, next_retry_at, plan_daily_sync,
+    refresh_daily_catalog, retry_is_mature, run_daily_sync,
+)
 
 __all__ = [
     "DataProvider",
@@ -122,4 +128,19 @@ __all__ = [
     "run_historical_performance_batch",
     "speed_profile_state",
     "sync_historical_team_session_catalog",
+    "DAILY_TEAM_ID",
+    "DAILY_SEASON",
+    "WINDOW_DAYS",
+    "MAX_DAILY_ATTEMPTS",
+    "DailyCatalogResult",
+    "DailySyncAction",
+    "DailySyncAttempt",
+    "DailySyncCandidate",
+    "DailySyncPlan",
+    "DailySyncResult",
+    "next_retry_at",
+    "retry_is_mature",
+    "plan_daily_sync",
+    "refresh_daily_catalog",
+    "run_daily_sync",
 ]

@@ -62,7 +62,7 @@ from modules.charts import (
     compact_reference_boxplot,
     compact_player_day_bars,
 )
-from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeRESTClient, GPExeRESTService, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, retry_sync_session, retry_sync_errors, SyncRequest, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS, format_metric_threshold
+from pas_connect import GPExeClient, GPExeGraphQLClient, GPExeRESTClient, GPExeRESTService, GPExeConfig, GPExeServices, GPExeAPIDataProvider, PASConnectDatabase, SnapshotStore, sync_reference_data, sync_team_sessions, sync_team_session_details, sync_athlete_session_details, run_full_sync, retry_sync_session, retry_sync_errors, run_daily_sync, SyncRequest, invalidate_team_filter_state, invalidate_athlete_filter_state, invalidate_athlete_session_state, invalidate_athlete_context_state, resolve_team_club_id, store_athlete_fetch_result, athletes_from_team_session_results, team_session_error_diagnostic, normalize_team_session_error_diagnostics, TEAM_SESSION_DIAGNOSTIC_COLUMNS, format_metric_threshold
 from pas_connect.pas_bridge import available_sessions, available_contexts, available_athletes, format_gpexe_context_label, has_compatible_performance_rows
 from pas_connect.mapper import map_team_session, map_graphql_athlete, map_graphql_athlete_session
 from pas_connect.endpoints import TEAMS
@@ -3170,6 +3170,9 @@ with settings_column:
                         api_database_path,
                         team_id=selected_local_team,
                         season=selected_local_season,
+                        selected_session_ids=st.session_state.get(
+                            "pas_gpexe_active_session_ids", []
+                        ),
                     )
                 api_sessions = available_sessions(
                     api_database_path, team_id=selected_local_team,
@@ -3791,6 +3794,74 @@ with settings_column:
             )
 
             with pas_connect_main:
+                st.divider()
+                st.markdown("##### Daily Sync GPExe")
+                st.caption("Contesto: SERIE B · 2026/2027")
+                st.caption(
+                    "Aggiorna le sessioni recenti GPExe della stagione 2026/2027. "
+                    "Lo storico 2025/2026 non viene elaborato."
+                )
+                daily_summary = st.session_state.get("pas_gpexe_daily_sync_summary")
+                if isinstance(daily_summary, dict):
+                    daily_columns = st.columns(6)
+                    daily_columns[0].metric("Nuove", int(daily_summary.get("new_found") or 0))
+                    daily_columns[1].metric("Candidate", int(daily_summary.get("candidates") or 0))
+                    daily_columns[2].metric("Tentate", int(daily_summary.get("attempted") or 0))
+                    daily_columns[3].metric("READY", int(daily_summary.get("ready_published") or 0))
+                    daily_columns[4].metric("Deferred 202", int(daily_summary.get("deferred_202") or 0))
+                    daily_columns[5].metric("Errori", int(daily_summary.get("errors") or 0))
+                    st.caption(
+                        f"Già complete: {int(daily_summary.get('already_complete') or 0)} · "
+                        f"Exercise/Drill non prioritari: "
+                        f"{int(daily_summary.get('technical_not_prioritized') or 0)}"
+                    )
+                    if daily_summary.get("next_retry_at"):
+                        st.info(f"Prossimo retry disponibile: {daily_summary['next_retry_at']}")
+                if st.button(
+                    "Sincronizza nuove sessioni",
+                    key="pas_gpexe_daily_sync",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    daily_client = None
+                    try:
+                        daily_config = GPExeConfig(
+                            base_url=str(gpexe_secrets.get("base_url", gpexe_base_url)).strip(),
+                            username=str(gpexe_secrets.get("username", "")).strip(),
+                            password=str(gpexe_secrets.get("password", "")),
+                            timeout_seconds=120.0,
+                            verify_tls=True,
+                        )
+                        daily_config.validate(require_credentials=True)
+                        daily_client = GPExeRESTClient(daily_config)
+                        daily_database = PASConnectDatabase.default()
+                        daily_progress = st.progress(0, text="Aggiornamento catalogo...")
+
+                        def _daily_progress(stage, index, total, message):
+                            if stage == "catalog":
+                                daily_progress.progress(5, text="Aggiornamento catalogo")
+                            elif stage == "plan":
+                                daily_progress.progress(10, text=message)
+                            else:
+                                percent = 10 + int((index / max(1, total)) * 90)
+                                daily_progress.progress(percent, text=message)
+
+                        daily_result = run_daily_sync(
+                            daily_client,
+                            daily_database,
+                            progress=_daily_progress,
+                        )
+                        st.session_state["pas_gpexe_daily_sync_summary"] = dict(
+                            daily_result.summary
+                        )
+                        daily_progress.progress(100, text="Daily Sync completato")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Daily Sync GPExe non riuscito: {exc}")
+                    finally:
+                        if daily_client is not None:
+                            daily_client.clear_token()
+
                 st.divider()
                 st.markdown("##### Sincronizzazione completa")
                 st.caption(
@@ -9672,7 +9743,17 @@ overview_mode = st.sidebar.radio(
 
 overview_player = None
 if overview_mode == "Player Overview":
-    all_players = sorted(raw["Athlete"].dropna().unique())
+    if (
+        using_gpexe
+        and st.session_state.get("pas_gpexe_input_mode", "API sincronizzata")
+        == "API sincronizzata"
+    ):
+        all_players = sorted({
+            row["athlete_label"]
+            for row in st.session_state.get("pas_gpexe_context_athletes", [])
+        })
+    else:
+        all_players = sorted(raw["Athlete"].dropna().unique())
     overview_player_key = "dashboard_overview_player"
     if st.session_state.get(overview_player_key) not in all_players:
         if all_players:

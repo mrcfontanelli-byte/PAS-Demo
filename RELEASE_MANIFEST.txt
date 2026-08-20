@@ -1,30 +1,31 @@
 PAS RELEASE MANIFEST
-Version: 4.18.0
-Source archive: PAS_DEMO_v4.18.0.zip
+Version: 4.18.1
+Source archive: PAS_DEMO_v4.18.1.zip
 Build date: 2026-08-20
 
 IMPLEMENTATION
-- GPExe historical multi-season foundation with Team/Season provider contexts.
-- Historical catalog separated from analysis and Dashboard eligibility.
-- REST aggregate plus elementary fallback and authoritative scoped memberships.
-- GPExe session, exercise and drill hierarchy classification.
-- Canonical Dashboard eligibility with exercise and drill exclusion.
-- Eligible-only Select all with no implicit-all for an empty selection.
+- GPExe Daily Sync for Team 543 / 2026/2027 with a bounded rolling window.
+- Daily catalog refresh, deterministic planner and retry cooldown.
+- Full Training priority before exercise and drill sessions.
+- REST aggregate plus elementary fallback without polling.
+- Immediate Dashboard publication for READY canonical sessions.
+- Session-scoped Player selector with no implicit-all for an empty selection.
+- Decorated GPExe category parsing, including [FULL TRAINING].
 
 UNCHANGED
 - Metric source policy, PAS statistics and Excel semantics.
 - PAS Connect schema version 12.
-- Included PAS Connect database contents.
+- Historical Sync 2025/2026 remains a separate progressive workflow.
 - Included Excel database contents.
 - Provider raw payloads and canonical category values.
 - Streamlit Cloud compatibility.
 
 VERIFICATION
-- Full automated suite: 428 passed.
+- Full automated suite: 446 passed.
 - Python compileall and clean app import: OK.
 - validate_release.py and git diff --check: OK.
 - SQLite integrity_check: ok.
 - PAS Connect database SHA-256:
-  4339c77799e60dceab60b4f42c757fce780c3fef057e962acbdb20ce07a843b2
+  9892940d9ba408a8091b69c2f71dfd9110845f63523dc1562857414de6b97d2f
 - Included Excel database SHA-256:
   9efa8e9ccfcb6bcff55b5f73407fc1b9e449c3a0633ee8f5a525d5a72d63010b

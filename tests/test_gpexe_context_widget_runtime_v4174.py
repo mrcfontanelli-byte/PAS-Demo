@@ -133,6 +133,7 @@ assert not at.exception
 players = widget(at, at.selectbox, "Giocatore della panoramica")
 assert len(players.options) == len(available_athletes(
     ".pas_data/pas_connect.sqlite3", team_id=543, season="2026/2027",
+    selected_session_ids=at.session_state["pas_gpexe_active_session_ids"],
 ))
 
 widget(at, at.button, "Azzera selezione").click().run(timeout=90)
@@ -171,6 +172,7 @@ assert not at.exception
 players = widget(at, at.selectbox, "Giocatore della panoramica")
 assert len(players.options) == len(available_athletes(
     ".pas_data/pas_connect.sqlite3", team_id=469, season="2025/2026",
+    selected_session_ids=at.session_state["pas_gpexe_active_session_ids"],
 ))
 widget(at, at.radio, "Panoramica principale").set_value("Team Overview").run(timeout=90)
 assert not at.exception

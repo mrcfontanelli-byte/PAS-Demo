@@ -202,10 +202,12 @@ def format_gpexe_context_label(
 
 def available_athletes(
     database_path: str | Path, *, team_id: int, season: str,
+    selected_session_ids: Iterable[int] | None = None,
 ) -> list[dict[str, object]]:
-    """Elenca gli atleti del contesto senza usare il campo Team legacy."""
+    """Elenca l'unione degli atleti delle sole TeamSession selezionate."""
     path = Path(database_path)
-    if not path.is_file():
+    selected = tuple(sorted({int(value) for value in (selected_session_ids or [])}))
+    if not path.is_file() or not selected:
         return []
     with sqlite3.connect(path) as connection:
         connection.row_factory = sqlite3.Row
@@ -214,17 +216,35 @@ def available_athletes(
             "AND name='gpexe_athlete_team_memberships'"
         ).fetchone() is None:
             return []
+        placeholders = ",".join("?" for _ in selected)
         rows = connection.execute(
-            """SELECT a.provider_player_id, a.external_player_id, a.first_name,
+            f"""SELECT a.provider_player_id, a.external_player_id, a.first_name,
                 a.last_name, a.player_name, a.short_name, m.team_id, m.season,
                 m.jersey_number, m.is_active
-            FROM gpexe_athlete_team_memberships m
+            FROM gpexe_athlete_session_details d
+            JOIN gpexe_team_sessions s ON s.provider_session_id=d.provider_session_id
+            JOIN gpexe_athlete_team_memberships m
+              ON m.provider_player_id=d.provider_player_id AND m.team_id=s.team_id
             JOIN gpexe_athletes a ON a.provider_player_id=m.provider_player_id
             WHERE m.team_id=? AND m.season=?
+              AND d.provider_session_id IN ({placeholders})
+            GROUP BY a.provider_player_id, a.external_player_id, a.first_name,
+                a.last_name, a.player_name, a.short_name, m.team_id, m.season,
+                m.jersey_number, m.is_active
             ORDER BY a.player_name, a.provider_player_id""",
-            (int(team_id), str(season)),
+            (int(team_id), str(season), *selected),
         ).fetchall()
-        return [dict(row) for row in rows]
+        result = []
+        for row in rows:
+            item = dict(row)
+            full_name = f"{item.get('first_name') or ''} {item.get('last_name') or ''}".strip()
+            item["athlete_label"] = (
+                full_name
+                or str(item.get("player_name") or "").strip()
+                or f"GPExe Athlete {item['provider_player_id']}"
+            ).upper()
+            result.append(item)
+        return result
 
 
 def has_compatible_performance_rows(

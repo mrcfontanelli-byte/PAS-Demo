@@ -2033,7 +2033,8 @@ class PASConnectDatabase:
             ).fetchone() is None:
                 return []
             rows = connection.execute(
-                "SELECT r.*, u.resource_group AS transport_resource "
+                "SELECT r.*, u.resource_group AS transport_resource, "
+                "u.season AS sync_season "
                 "FROM gpexe_session_sync_results r "
                 "JOIN gpexe_sync_runs u ON u.id=r.sync_run_id" + where
                 + " ORDER BY r.id DESC", values,

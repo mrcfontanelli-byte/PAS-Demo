@@ -1,5 +1,28 @@
 # Changelog
 
+## PAS v4.18.1 - 2026-08-20
+
+### Added
+
+- Aggiunto il Daily Sync GPExe operativo per Team 543 / 2026/2027.
+- Aggiunti il planner Daily separato e il refresh del catalogo Daily.
+- Aggiunto il cooldown per i retry delle risposte 202 non ancora completabili.
+- Aggiunto il comando PAS Connect **Sincronizza nuove sessioni**.
+- Aggiunti risultato e summary tipizzati del Daily Sync.
+
+### Changed
+
+- Le Full Training recenti hanno priorità nel piano Daily.
+- Il selector Dashboard viene riletto dopo la pubblicazione READY.
+- `available_athletes` filtra gli atleti sulle sole TeamSession selezionate.
+- Il parsing delle categorie GPExe riconosce anche descrizioni decorate come `[FULL TRAINING]`.
+
+### Fixed
+
+- Corretto il mancato riconoscimento delle descrizioni decorate `[FULL TRAINING]`.
+- Eliminata la divergenza tra Player selector e `available_athletes`.
+- Impedito qualsiasi implicit-all quando la selezione è `[]`.
+
 ## PAS v4.18.0 - 2026-08-20
 
 ### Added

@@ -1,10 +1,20 @@
-## PAS v4.18.0 — GPExe Historical Multi-Season Foundation
+## PAS v4.18.1 — GPExe Daily Sync 2026/2027
+
+Il comando **Sincronizza nuove sessioni** rende operativo il Daily Sync GPExe per Team 543 / 2026/2027. Il planner usa una finestra mobile di oggi più i tre giorni precedenti, limita ogni run a 10 attempt e assegna priorità alle Full Training recenti e alle categorie Dashboard canoniche prima di Exercise/Drill. Le descrizioni decorate, per esempio `[FULL TRAINING]`, vengono ricondotte alla categoria canonica.
+
+Il recupero usa l'aggregate REST e, quando necessario, l'elementary fallback senza polling. Una risposta 202 non blocca il run: un bundle elementare completo può essere pubblicato subito come READY; altrimenti la sessione viene rinviata applicando il cooldown di retry e il run continua con la candidata successiva. Una TeamSession READY diventa immediatamente disponibile nella Dashboard.
+
+Il Daily Sync è completamente isolato da Team 469 / 2025/2026. Non applica implicit-all: una selezione `[]` resta vuota e il Player selector include esclusivamente gli atleti delle TeamSession selezionate.
+
+**Historical Sync 2025/2026 resta un workflow separato e progressivo.**
+
+### Foundation multi-season introdotta in v4.18.0
 
 PAS introduce la foundation storica multi-season GPExe con contesto provider Team/Season e catalogo storico separato dall'analysis eligibility. Sono supportati Team 543 / 2026/2027 e Team 469 / 2025/2026; Team 443 / 2024/2025 viene catalogato senza inferire uno Speed Profile. Il recupero REST usa aggregate ed elementary fallback, mentre la membership scoped è la fonte autorevole per le TeamSession drill.
 
 La gerarchia GPExe distingue session, exercise e drill. La Dashboard espone soltanto TeamSession appartenenti alle categorie canoniche PAS: `EXERCISE` e `DRILL` sono escluse, mentre `Different Traning` è normalizzato logicamente a `Different Training` senza alterare il valore raw del provider. **Seleziona tutte** seleziona esclusivamente le TeamSession Dashboard eligible; una selezione `[]` resta vuota e non attiva alcun implicit-all.
 
-Daily Sync operativo avanzato 2026/2027, Drills Analysis GPExe, Match Cycle GPExe e backfill completo 2025/2026 non fanno parte di questa release e restano attività future.
+Drills Analysis GPExe, Match Cycle GPExe e backfill completo 2025/2026 non fanno parte di questa release.
 
 ## PAS v4.17.4 — Dashboard N/D Cleanup + Speed Zone Color Consistency
 

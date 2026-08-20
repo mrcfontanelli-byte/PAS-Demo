@@ -118,4 +118,10 @@ def test_ambiguous_and_unknown_main_are_excluded_without_semantic_mapping():
     assert ambiguous.dashboard_eligible is False
     assert unknown_main.canonical_dashboard_category is None
     assert canonical_gpexe_dashboard_category("Different Traning") == "Different Training"
+    assert canonical_gpexe_dashboard_category("[FULL TRAINING] 20 AUG 2026") == "Full Training"
+    assert canonical_gpexe_dashboard_category(" [RETURN TO PLAY] note ") == "Return to Play"
+    assert canonical_gpexe_dashboard_category("[DIFFERENT TRANING] note") == "Different Training"
+    assert canonical_gpexe_dashboard_category("prefix [FULL TRAINING]") is None
+    assert canonical_gpexe_dashboard_category("[EXERCISE] Full Training") is None
+    assert canonical_gpexe_dashboard_category("[FULL TRAINING note") is None
     assert canonical_gpexe_dashboard_category("EXERCISE") is None

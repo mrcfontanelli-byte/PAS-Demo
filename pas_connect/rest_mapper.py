@@ -6,6 +6,7 @@ import math
 from typing import Any, Mapping
 
 from modules.session_categories import canonical_session_category
+from .dashboard_sessions import canonical_gpexe_dashboard_category
 from .exceptions import MappingError
 
 PROVENANCE = "gpexe_rest_athlete_session_detail"
@@ -37,6 +38,13 @@ NON_METRIC_FIELDS = {
     "start_date", "end_date", "created_on", "updated_on", "state", "starter",
     "is_stats_valid", "need_reprocess", "tags", *ZONE_NAMES,
 }
+
+
+def _mapped_session_category(value: object) -> object:
+    canonical = canonical_gpexe_dashboard_category(value)
+    if isinstance(value, str) and value.lstrip().startswith("[") and canonical is not None:
+        return canonical
+    return canonical_session_category(value)
 
 
 def _mapping(payload: object, label: str) -> Mapping[str, Any]:
@@ -77,7 +85,7 @@ def map_rest_team_session(payload: Mapping[str, Any]) -> dict[str, Any]:
         "total_time": header.get("total_time") or timing.get("total_time"),
         "category": {
             "id": category.get("id"),
-            "name": canonical_session_category(category.get("name")),
+            "name": _mapped_session_category(category.get("name")),
         },
         "tags": list(header.get("tags") or []), "drill": dict(drill),
         "match_cycle": match.get("cycle"), "athlete_count": header.get("athletes"),
