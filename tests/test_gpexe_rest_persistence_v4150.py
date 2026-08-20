@@ -157,6 +157,24 @@ def test_rpe_null_unknown_inactive_and_rest_provenance(tmp_path):
     assert "graphql" not in json.dumps([dict(row) for row in rows] + [detail_raw]).lower()
 
 
+def test_internal_teamsession_and_drill_are_preserved_without_changing_membership(tmp_path):
+    db = _db(tmp_path)
+    ready = _ready(team_session_id=144769)
+    ready.bundle["athlete_sessions"][0]["provider_session_id"] = 144761
+    ready.bundle["athlete_sessions"][0]["raw"].update(
+        teamsession=144761, drill=6,
+    )
+    GPExeRESTPersistenceGate(db).publish(ready, season="2026/2027")
+    with db.connect() as connection:
+        row = connection.execute(
+            "SELECT provider_session_id, drill_id, raw_json "
+            "FROM gpexe_athlete_session_details"
+        ).fetchone()
+    raw = json.loads(row["raw_json"])["payload"]
+    assert (row["provider_session_id"], row["drill_id"]) == (144769, 6)
+    assert (raw["teamsession"], raw["drill"]) == (144761, 6)
+
+
 def test_schema_12_unchanged_and_no_excel_fallback():
     assert SCHEMA_VERSION == 12
     source = inspect.getsource(GPExeRESTPersistenceGate).lower()

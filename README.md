@@ -1,3 +1,11 @@
+## PAS v4.18.0 — GPExe Historical Multi-Season Foundation
+
+PAS introduce la foundation storica multi-season GPExe con contesto provider Team/Season e catalogo storico separato dall'analysis eligibility. Sono supportati Team 543 / 2026/2027 e Team 469 / 2025/2026; Team 443 / 2024/2025 viene catalogato senza inferire uno Speed Profile. Il recupero REST usa aggregate ed elementary fallback, mentre la membership scoped è la fonte autorevole per le TeamSession drill.
+
+La gerarchia GPExe distingue session, exercise e drill. La Dashboard espone soltanto TeamSession appartenenti alle categorie canoniche PAS: `EXERCISE` e `DRILL` sono escluse, mentre `Different Traning` è normalizzato logicamente a `Different Training` senza alterare il valore raw del provider. **Seleziona tutte** seleziona esclusivamente le TeamSession Dashboard eligible; una selezione `[]` resta vuota e non attiva alcun implicit-all.
+
+Daily Sync operativo avanzato 2026/2027, Drills Analysis GPExe, Match Cycle GPExe e backfill completo 2025/2026 non fanno parte di questa release e restano attività future.
+
 ## PAS v4.17.4 — Dashboard N/D Cleanup + Speed Zone Color Consistency
 
 La Dashboard separa le metriche completamente prive di valori nel contesto GPExe corrente, spostandole in un expander dedicato **Metriche non disponibili**. I selector dei grafici di dettaglio e del Session Report propongono soltanto metriche disponibili; il percorso Excel e la source policy delle metriche restano invariati.

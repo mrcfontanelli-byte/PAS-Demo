@@ -1,31 +1,30 @@
 PAS RELEASE MANIFEST
-Version: 4.17.4
-Source archive: PAS_DEMO_v4.17.4.zip
-Build date: 2026-08-14
+Version: 4.18.0
+Source archive: PAS_DEMO_v4.18.0.zip
+Build date: 2026-08-20
 
 IMPLEMENTATION
-- Dashboard N/D cleanup with unavailable metrics isolated in a dedicated expander.
-- Detail and Session Report metric selectors filtered by contextual availability.
-- Consistent Dynamic Speed Zone colors across GPExe visualizations.
-- Multi-Team local GPExe discovery and hardened TeamSession selector state.
-- Stable frontend string tokens with canonical `list[int]` state.
-- BaseWeb menu stacking above the Settings panel.
+- GPExe historical multi-season foundation with Team/Season provider contexts.
+- Historical catalog separated from analysis and Dashboard eligibility.
+- REST aggregate plus elementary fallback and authoritative scoped memberships.
+- GPExe session, exercise and drill hierarchy classification.
+- Canonical Dashboard eligibility with exercise and drill exclusion.
+- Eligible-only Select all with no implicit-all for an empty selection.
 
 UNCHANGED
 - Metric source policy, PAS statistics and Excel semantics.
 - PAS Connect schema version 12.
 - Included PAS Connect database contents.
 - Included Excel database contents.
-- GPExe synchronization behavior.
+- Provider raw payloads and canonical category values.
 - Streamlit Cloud compatibility.
 
 VERIFICATION
-- Targeted v4.17.4 tests: 41 passed.
-- Full automated suite: 398 passed.
+- Full automated suite: 428 passed.
 - Python compileall and clean app import: OK.
 - validate_release.py and git diff --check: OK.
 - SQLite integrity_check: ok.
 - PAS Connect database SHA-256:
-  d2c3e9ae5bc35aafe29966706ea1fa57654133de60c703b1c378714b3bfb228a
+  4339c77799e60dceab60b4f42c757fce780c3fef057e962acbdb20ce07a843b2
 - Included Excel database SHA-256:
   9efa8e9ccfcb6bcff55b5f73407fc1b9e449c3a0633ee8f5a525d5a72d63010b

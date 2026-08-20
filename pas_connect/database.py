@@ -756,6 +756,319 @@ class PASConnectDatabase:
 
         return ReferenceImportResult(self.path, synced_at, counts, run_id)
 
+    def upsert_team_references(
+        self,
+        teams: list[Mapping[str, Any]],
+        *,
+        synced_at: str | None = None,
+    ) -> int:
+        """Aggiorna solo le anagrafiche Team, preservando metadata validi esistenti."""
+        timestamp = str(synced_at or datetime.now(timezone.utc).isoformat())
+        self.initialize()
+        with self.connect() as connection:
+            connection.execute("BEGIN")
+            try:
+                for incoming in teams:
+                    team_id = int(incoming["provider_team_id"])
+                    existing = connection.execute(
+                        "SELECT * FROM gpexe_teams WHERE provider_team_id=?",
+                        (team_id,),
+                    ).fetchone()
+                    current = dict(existing) if existing is not None else {}
+
+                    def useful(field: str, *, required: bool = False) -> object:
+                        value = incoming.get(field)
+                        if isinstance(value, str):
+                            value = value.strip()
+                        if value not in (None, ""):
+                            return value
+                        previous = current.get(field)
+                        if previous not in (None, ""):
+                            return previous
+                        if required:
+                            raise ValueError(f"Team GPExe {team_id} privo di {field}.")
+                        return None
+
+                    raw = incoming.get("raw")
+                    bounded_raw = _raw_object(current.get("raw_json"))
+                    bounded_raw.update(
+                        {
+                            key: value
+                            for key, value in (
+                                dict(raw) if isinstance(raw, Mapping) else dict(incoming)
+                            ).items()
+                            if value not in (None, "")
+                        }
+                    )
+                    incoming_locked = incoming.get("locked")
+                    locked = (
+                        int(bool(incoming_locked))
+                        if incoming_locked is not None
+                        else int(bool(current.get("locked", 0)))
+                    )
+                    connection.execute(
+                        """INSERT INTO gpexe_teams(
+                        provider_team_id,team_name,club_id,season,sport,start_date,end_date,
+                        locked,provider_updated_at,synced_at,raw_json)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                        ON CONFLICT(provider_team_id) DO UPDATE SET
+                        team_name=excluded.team_name,club_id=excluded.club_id,
+                        season=excluded.season,sport=excluded.sport,
+                        start_date=excluded.start_date,end_date=excluded.end_date,
+                        locked=excluded.locked,provider_updated_at=excluded.provider_updated_at,
+                        synced_at=excluded.synced_at,raw_json=excluded.raw_json""",
+                        (
+                            team_id,
+                            useful("team_name", required=True),
+                            useful("club_id"),
+                            useful("season"),
+                            useful("sport"),
+                            useful("start_date"),
+                            useful("end_date"),
+                            locked,
+                            useful("updated_at"),
+                            timestamp,
+                            self._json(bounded_raw),
+                        ),
+                    )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+        return len(teams)
+
+    def historical_session_inventory(
+        self,
+        *,
+        team_id: int,
+        season: str,
+    ) -> list[dict[str, Any]]:
+        """Stato resumable derivato dalle strutture schema 12, senza duplicare metriche."""
+        if not self.path.is_file():
+            return []
+        with self.connect() as connection:
+            rows = connection.execute(
+                """WITH latest AS (
+                    SELECT r.*,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY r.provider_session_id
+                            ORDER BY r.id DESC
+                        ) AS rank
+                    FROM gpexe_session_sync_results r
+                    JOIN gpexe_sync_runs u ON u.id=r.sync_run_id
+                    WHERE r.team_id=? AND u.season=?
+                ), inventory AS (
+                    SELECT s.provider_session_id AS team_session_id,
+                        s.team_id, ? AS season,
+                        substr(s.start_timestamp,1,10) AS session_date,
+                        s.session_name AS description,
+                        1 AS remote_discovered,
+                        EXISTS(
+                            SELECT 1 FROM gpexe_athlete_session_details d
+                            WHERE d.provider_session_id=s.provider_session_id
+                        ) AS locally_present,
+                        (SELECT COUNT(*) FROM gpexe_athlete_session_details d
+                         WHERE d.provider_session_id=s.provider_session_id) AS athlete_sessions_count,
+                        (SELECT COUNT(DISTINCT d.track_id)
+                         FROM gpexe_athlete_session_details d
+                         WHERE d.provider_session_id=s.provider_session_id
+                           AND d.track_id IS NOT NULL) AS tracks_count,
+                        (SELECT COUNT(*) FROM gpexe_athlete_session_kpis k
+                         JOIN gpexe_athlete_session_details d
+                           ON d.provider_athlete_session_id=k.provider_athlete_session_id
+                         WHERE d.provider_session_id=s.provider_session_id) AS kpis_count,
+                        CASE WHEN EXISTS(
+                            SELECT 1 FROM gpexe_athlete_session_details d
+                            WHERE d.provider_session_id=s.provider_session_id
+                        ) AND NOT EXISTS(
+                            SELECT 1 FROM gpexe_athlete_session_details d
+                            WHERE d.provider_session_id=s.provider_session_id
+                              AND NOT EXISTS(
+                                SELECT 1 FROM gpexe_athlete_session_kpis k
+                                WHERE k.provider_athlete_session_id=d.provider_athlete_session_id
+                                  AND k.source IN ('rest_v2','identifierKpi','kpi')
+                                  AND lower(trim(k.name)) IN
+                                      ('distance','total distance','total_distance')
+                                  AND k.value IS NOT NULL AND trim(k.value)<>''
+                              )
+                        ) THEN 1 ELSE 0 END AS performance_usable
+                    FROM gpexe_team_sessions s
+                    WHERE s.team_id=?
+                )
+                SELECT i.*, l.status AS sync_status, l.readiness,
+                    l.completed_at AS last_attempt, l.error_message,
+                    l.diagnostics_json,
+                    CASE
+                        WHEN i.performance_usable=1 THEN 'COMPLETE'
+                        WHEN i.locally_present=1 THEN 'PARTIAL'
+                        ELSE 'MISSING'
+                    END AS local_completeness,
+                    CASE WHEN l.readiness='READY'
+                              AND l.status IN ('SUCCESS','SKIPPED')
+                         THEN 1 ELSE 0 END AS sync_history_ready,
+                    CASE WHEN lower(coalesce(l.diagnostics_json,'')) LIKE '%\"processing\": true%'
+                              OR lower(coalesce(l.error_message,'')) LIKE '%http 202%'
+                         THEN 1 ELSE 0 END AS deferred_202
+                FROM inventory i
+                LEFT JOIN latest l ON l.provider_session_id=i.team_session_id AND l.rank=1
+                ORDER BY i.session_date, i.team_session_id""",
+                (int(team_id), str(season), str(season), int(team_id)),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def rest_team_session_metadata(self, provider_session_id: int) -> dict[str, Any] | None:
+        """Proietta il catalogo locale nel modello TeamSession canonico del builder REST."""
+        if not self.path.is_file():
+            return None
+        with self.connect() as connection:
+            row = connection.execute(
+                """SELECT provider_session_id, team_id, category_id, session_name,
+                    start_timestamp, end_timestamp, total_time, is_stats_valid,
+                    drill_enabled, state, raw_json
+                FROM gpexe_team_sessions WHERE provider_session_id=?""",
+                (int(provider_session_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        raw = _raw_object(row["raw_json"])
+        return {
+            "provider": "gpexe", "provider_contract": "rest_v2",
+            "provider_session_id": int(row["provider_session_id"]),
+            "team_id": int(row["team_id"]),
+            "nature": row["session_name"],
+            "start_timestamp": row["start_timestamp"],
+            "end_timestamp": row["end_timestamp"],
+            "duration": row["total_time"], "total_time": row["total_time"],
+            "category": {"id": row["category_id"], "name": row["session_name"]},
+            "tags": [], "drill": {"enabled": row["drill_enabled"]},
+            "match_cycle": None, "athlete_count": None,
+            "is_stats_valid": row["is_stats_valid"],
+            "processing_status": {"catalog_state": row["state"]},
+            "raw": raw, "provenance": "gpexe_rest_team_session_catalog",
+        }
+
+    def upsert_historical_session_catalog(
+        self,
+        *,
+        team_id: int,
+        season: str,
+        sessions: list[Mapping[str, Any]],
+        page: int,
+    ) -> dict[str, int]:
+        """Checkpoint catalogo metadata-only; non tocca dettagli, Track o KPI."""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        self.initialize()
+        inserted = updated = 0
+        with self.connect() as connection:
+            team = connection.execute(
+                "SELECT season FROM gpexe_teams WHERE provider_team_id=?",
+                (int(team_id),),
+            ).fetchone()
+            if team is None or str(team["season"] or "") != str(season):
+                raise ValueError(
+                    f"Contesto catalogo non verificato: Team {team_id} / {season}."
+                )
+            cursor = connection.execute(
+                """INSERT INTO gpexe_sync_runs(
+                resource_group,started_at,status,provider,team_id,season,mode,
+                requested_count,summary_json)
+                VALUES(?,?,?,?,?,?,?,?,?)""",
+                (
+                    "historical_team_session_catalog", timestamp, "running", "REST",
+                    int(team_id), str(season), "catalog_metadata_only", len(sessions),
+                    self._json({"page": int(page), "page_size": 500}),
+                ),
+            )
+            run_id = int(cursor.lastrowid)
+            connection.commit()
+            try:
+                connection.execute("BEGIN")
+                for incoming in sessions:
+                    session_id = int(incoming["provider_session_id"])
+                    if int(incoming.get("team_id") or 0) != int(team_id):
+                        raise ValueError(
+                            f"TeamSession {session_id} fuori dal contesto Team {team_id}."
+                        )
+                    existing = connection.execute(
+                        "SELECT * FROM gpexe_team_sessions WHERE provider_session_id=?",
+                        (session_id,),
+                    ).fetchone()
+                    current = dict(existing) if existing is not None else {}
+
+                    def keep(field: str, fallback: object = None) -> object:
+                        previous = current.get(field)
+                        if previous not in (None, ""):
+                            return previous
+                        value = incoming.get(field)
+                        if isinstance(value, str):
+                            value = value.strip()
+                        if value not in (None, ""):
+                            return value
+                        return fallback
+
+                    raw = _raw_object(current.get("raw_json"))
+                    incoming_raw = incoming.get("raw")
+                    raw.update({
+                        key: value
+                        for key, value in (
+                            dict(incoming_raw)
+                            if isinstance(incoming_raw, Mapping)
+                            else dict(incoming)
+                        ).items()
+                        if value not in (None, "")
+                    })
+                    connection.execute(
+                        """INSERT INTO gpexe_team_sessions(
+                        provider_session_id,team_id,category_id,session_name,notes,
+                        start_timestamp,end_timestamp,total_time,is_stats_valid,
+                        drill_enabled,state,submitted_by,provider_created_at,
+                        provider_updated_at,synced_at,raw_json)
+                        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                        ON CONFLICT(provider_session_id) DO UPDATE SET
+                        team_id=excluded.team_id,category_id=excluded.category_id,
+                        session_name=excluded.session_name,notes=excluded.notes,
+                        start_timestamp=excluded.start_timestamp,
+                        end_timestamp=excluded.end_timestamp,total_time=excluded.total_time,
+                        is_stats_valid=excluded.is_stats_valid,
+                        drill_enabled=excluded.drill_enabled,state=excluded.state,
+                        submitted_by=excluded.submitted_by,
+                        provider_created_at=excluded.provider_created_at,
+                        provider_updated_at=excluded.provider_updated_at,
+                        synced_at=excluded.synced_at,raw_json=excluded.raw_json""",
+                        (
+                            session_id, int(team_id), keep("category_id"),
+                            keep("session_name", f"GPExe Session {session_id}"),
+                            keep("notes"), keep("start_timestamp"), keep("end_timestamp"),
+                            keep("total_time"),
+                            int(bool(current.get("is_stats_valid")))
+                            if existing is not None
+                            else int(bool(incoming.get("is_stats_valid"))),
+                            int(bool(current.get("drill_enabled")))
+                            if existing is not None
+                            else int(bool(incoming.get("drill_enabled"))),
+                            keep("state"), keep("submitted_by"), keep("created_at"),
+                            keep("updated_at"), timestamp, self._json(raw),
+                        ),
+                    )
+                    inserted += int(existing is None)
+                    updated += int(existing is not None)
+                connection.execute(
+                    """UPDATE gpexe_sync_runs SET completed_at=?,status='success',
+                    sessions_count=?,inserted_count=?,updated_count=? WHERE id=?""",
+                    (datetime.now(timezone.utc).isoformat(), len(sessions), inserted, updated, run_id),
+                )
+                connection.commit()
+            except Exception as exc:
+                connection.rollback()
+                connection.execute(
+                    """UPDATE gpexe_sync_runs SET completed_at=?,status='failed',
+                    error_message=? WHERE id=?""",
+                    (datetime.now(timezone.utc).isoformat(), str(exc), run_id),
+                )
+                connection.commit()
+                raise
+        return {"inserted": inserted, "updated": updated, "run_id": run_id}
+
     def replace_tracks(self, payload: Mapping[str, Any]) -> int:
         tracks = list(payload.get("tracks") or [])
         synced_at = str(payload.get("synced_at") or datetime.now(timezone.utc).isoformat())

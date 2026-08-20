@@ -8,6 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from modules.config import PLAYERS_HELLAS, SEASON_PHASES_2526, METRICS
+from modules.session_categories import canonical_session_category
 
 
 def find_database(base_dir: Path) -> Path:
@@ -82,6 +83,28 @@ def _normalize_role(value: object) -> object:
         "goalkeeper": "Goalkeeper",
     }
     return mapping.get(text, str(value).strip().title())
+
+
+def normalize_dashboard_session_categories(df: pd.DataFrame) -> pd.DataFrame:
+    """Canonicalizza le categorie Dashboard senza alterare i raw Excel."""
+    normalized = df.copy()
+    if "Drill" not in normalized.columns:
+        return normalized
+
+    raw_drill = normalized["Drill"].copy()
+    normalized["Drill"] = raw_drill.map(canonical_session_category)
+
+    # Elimina solo il duplicato storico perfettamente equivalente: righe con
+    # metriche differenti restano dati distinti e continuano a essere sommate.
+    alias_rows = raw_drill.eq("Different Traning")
+    canonical_rows = raw_drill.eq("Different Training")
+    if alias_rows.any() and canonical_rows.any():
+        row_keys = pd.util.hash_pandas_object(normalized, index=False)
+        canonical_keys = set(row_keys[canonical_rows].tolist())
+        normalized = normalized.loc[
+            ~(alias_rows & row_keys.isin(canonical_keys))
+        ].copy()
+    return normalized
 
 
 @st.cache_data(show_spinner="Caricamento database...")
@@ -167,6 +190,8 @@ def load_database(
     for column in text_columns:
         if column in df.columns:
             df[column] = _clean_text(df[column])
+
+    df = normalize_dashboard_session_categories(df)
 
     df["Date"] = pd.to_datetime(
         df["Date"],

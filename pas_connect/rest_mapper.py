@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 import math
 from typing import Any, Mapping
 
+from modules.session_categories import canonical_session_category
 from .exceptions import MappingError
 
 PROVENANCE = "gpexe_rest_athlete_session_detail"
@@ -74,7 +75,10 @@ def map_rest_team_session(payload: Mapping[str, Any]) -> dict[str, Any]:
         "end_timestamp": timing.get("end_timestamp"),
         "duration": timing.get("duration"),
         "total_time": header.get("total_time") or timing.get("total_time"),
-        "category": {"id": category.get("id"), "name": category.get("name")},
+        "category": {
+            "id": category.get("id"),
+            "name": canonical_session_category(category.get("name")),
+        },
         "tags": list(header.get("tags") or []), "drill": dict(drill),
         "match_cycle": match.get("cycle"), "athlete_count": header.get("athletes"),
         "is_stats_valid": status.get("is_stats_valid"), "processing_status": dict(status),

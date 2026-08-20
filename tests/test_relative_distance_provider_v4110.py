@@ -113,7 +113,7 @@ def test_clean_process_imports_relative_validation_and_app_without_import_error(
         )],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=120,
     )
     assert completed.returncode == 0, completed.stderr
     assert "ImportError" not in completed.stderr

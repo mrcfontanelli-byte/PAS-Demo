@@ -9,6 +9,7 @@ from typing import Iterable
 import pandas as pd
 
 from modules.data_mapping import CANONICAL_METRICS, map_gpexe_metrics
+from .dashboard_sessions import classify_local_dashboard_sessions
 from .metric_descriptors import SCALAR_METRICS, descriptor_pas_value, resolve_scalar_metrics
 
 _SCALAR_SPEC_BY_CANONICAL = {spec.canonical_key: spec for spec in SCALAR_METRICS}
@@ -36,6 +37,7 @@ def _duration_minutes(value: object) -> float | None:
 def available_sessions(
     database_path: str | Path, *, team_id: int | None = None,
     season: str | None = None, ready_only: bool = False,
+    dashboard_only: bool = False,
 ) -> list[dict[str, object]]:
     path = Path(database_path)
     if not path.is_file():
@@ -116,7 +118,14 @@ def available_sessions(
             + " ORDER BY s.start_timestamp DESC, s.provider_session_id DESC",
             values,
         ).fetchall()
-    return [dict(row) for row in rows]
+        sessions = [dict(row) for row in rows]
+        if ready_only and team_id is not None and season:
+            sessions = classify_local_dashboard_sessions(
+                connection, sessions, team_id=int(team_id), season=str(season)
+            )
+            if dashboard_only:
+                sessions = [item for item in sessions if item["dashboard_eligible"]]
+    return sessions
 
 
 def available_contexts(database_path: str | Path) -> list[dict[str, object]]:
@@ -157,14 +166,38 @@ def available_contexts(database_path: str | Path) -> list[dict[str, object]]:
                 JOIN gpexe_sync_runs u ON u.id=r.sync_run_id
                 WHERE r.readiness='READY' AND r.status IN ('SUCCESS','SKIPPED')
                   AND r.team_id IS NOT NULL AND TRIM(u.season)<>''""")
+        if "gpexe_teams" in table_names:
+            selects.append("""SELECT provider_team_id AS team_id, season,
+                       2 AS source_priority
+                FROM gpexe_teams
+                WHERE season IS NOT NULL AND TRIM(season)<>''""")
         if not selects:
             return []
         rows = connection.execute(
-            "SELECT team_id, season FROM (" + " UNION ALL ".join(selects)
-            + ") GROUP BY team_id, season "
-              "ORDER BY MIN(source_priority), team_id, season"
+            "WITH contexts AS (" + " UNION ALL ".join(selects)
+            + "), ranked AS (SELECT team_id,season,MIN(source_priority) source_priority "
+              "FROM contexts GROUP BY team_id,season) "
+              "SELECT r.team_id,r.season,t.team_name FROM ranked r "
+              "LEFT JOIN gpexe_teams t ON t.provider_team_id=r.team_id "
+              "ORDER BY r.source_priority,r.team_id,r.season"
         ).fetchall()
-        return [dict(row) for row in rows]
+        result: list[dict[str, object]] = []
+        for row in rows:
+            item = dict(row)
+            if item.get("team_name") in (None, ""):
+                item.pop("team_name", None)
+            result.append(item)
+        return result
+
+
+def format_gpexe_context_label(
+    team_id: object,
+    season: object,
+    team_name: object = None,
+) -> str:
+    """Label provider-aware; Team ID e stagione restano la chiave interna."""
+    name = str(team_name or "").strip() or f"Team {int(team_id)}"
+    return f"{name} · {str(season)}"
 
 
 def available_athletes(

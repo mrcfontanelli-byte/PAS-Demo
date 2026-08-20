@@ -12,7 +12,7 @@ def _app_source() -> str:
 def test_release_version_and_pas_connect_panels_are_declared_in_target_order():
     app = _app_source()
     version = (ROOT / "modules" / "version.py").read_text(encoding="utf-8")
-    assert 'APP_BUILD_VERSION = "4.17.4"' in version
+    assert 'APP_BUILD_VERSION = "4.18.0"' in version
 
     markers = (
         'pas_connect_main = st.container()',
@@ -160,7 +160,8 @@ def test_local_context_uses_stable_identity_and_empty_selection_is_preserved():
     app = _app_source()
     assert 'context_key = "pas_gpexe_local_context"' in app
     assert '"Contesto GPExe locale", context_options,' in app
-    assert 'format_func=lambda value: f"Team {value[0]} · {value[1]}"' in app
+    assert "format_func=lambda value: format_gpexe_context_label(" in app
+    assert 'context_by_key[value].get("team_name")' in app
     assert 'key="pas_gpexe_local_context_index"' not in app
     assert 'previous_context_key = "pas_gpexe_previous_session_context"' in app
     assert 'session_widget_key = (' in app

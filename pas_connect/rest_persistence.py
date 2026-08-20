@@ -98,6 +98,9 @@ class GPExeRESTPersistenceGate:
         category = team.get("category") if isinstance(team.get("category"), Mapping) else {}
         session_name = str(category.get("name") or team.get("nature") or "").strip()
         provider_session_id = int(team["provider_session_id"])
+        bundle_provenance = str(bundle.get("provenance") or "rest_v2_aggregate")
+        team_raw = dict(team.get("raw") or {})
+        team_raw["pas_bundle_provenance"] = bundle_provenance
         parent = {
             "provider": "gpexe", "provider_contract": "rest_v2",
             "provider_session_id": provider_session_id, "team_id": int(team["team_id"]),
@@ -108,7 +111,12 @@ class GPExeRESTPersistenceGate:
             "is_stats_valid": team.get("is_stats_valid"),
             "drill_enabled": (team.get("drill") or {}).get("enabled"),
             "state": "READY", "submitted_by": None, "created_at": None, "updated_at": None,
-            "provenance": "gpexe_rest_team_session_detail", "raw": team.get("raw"),
+            "provenance": (
+                "gpexe_rest_team_session_elementary"
+                if bundle_provenance == "rest_v2_elementary"
+                else "gpexe_rest_team_session_detail"
+            ),
+            "raw": team_raw,
         }
         athletes_by_id: dict[int, dict[str, Any]] = {}
         identities = identity_index or {}
@@ -179,7 +187,9 @@ class GPExeRESTPersistenceGate:
             sessions.append({
                 "provider_athlete_session_id": int(row["provider_athlete_session_id"]),
                 "provider_session_id": provider_session_id,
-                "provider_player_id": athlete_id, "drill_id": None, "track_id": track_id,
+                "provider_player_id": athlete_id,
+                "drill_id": (row.get("raw") or {}).get("drill"),
+                "track_id": track_id,
                 "state": row.get("state"), "starter": row.get("starter"),
                 "is_stats_valid": row.get("is_stats_valid"),
                 "total_time": row.get("total_time"), "template_id": None,

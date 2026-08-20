@@ -188,6 +188,7 @@ at = AppTest.from_file("app.py")
 at.session_state["pas_demo_authenticated"] = True
 at.session_state["pas_navigation"] = "🏠 Dashboard"
 at.session_state["pas_data_source"] = "gpexe"
+at.session_state["pas_gpexe_local_context"] = (543, "2026/2027")
 at.session_state["dashboard_reference_date"] = date(2026, 5, 23)
 at.session_state["dashboard_selected_drill"] = "Full Training"
 at.session_state["pas_gpexe_active_session_ids"] = [143261]

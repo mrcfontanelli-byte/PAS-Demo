@@ -1,5 +1,33 @@
 # Changelog
 
+## PAS v4.18.0 - 2026-08-20
+
+### Added
+
+- Aggiunta la foundation storica multi-season GPExe con contesto provider Team/Season.
+- Aggiunto il supporto al catalogo Team e ai relativi nomi.
+- Aggiunto il fallback REST elementary quando il payload aggregate non è sufficiente.
+- Aggiunta la classificazione gerarchica di session, exercise e drill.
+- Aggiunta l'eligibility canonica delle TeamSession per la Dashboard PAS.
+
+### Changed
+
+- Il selector GPExe mostra soltanto le TeamSession appartenenti alle categorie Dashboard canoniche.
+- **Seleziona tutte** usa esclusivamente le TeamSession Dashboard eligible e non applica implicit-all a una selezione vuota.
+- `Different Traning` è trattato come alias logico di `Different Training`, preservando il valore raw del provider.
+
+### Fixed
+
+- Resa autorevole la membership scoped per le drill TeamSession con `teamsession` parent interno.
+- Impedito il doppio conteggio automatico in Dashboard tra parent ed exercise/drill.
+- Consolidati la gestione `N/D` e lo stato dei selector nel flusso GPExe corrente.
+
+### Unchanged
+
+- I payload raw del provider, i dati PAS Connect e il file Excel canonico non vengono alterati.
+- Lo schema PAS Connect resta 12.
+- Daily Sync operativo avanzato 2026/2027, Drills Analysis GPExe, Match Cycle GPExe e backfill completo 2025/2026 restano fuori dalla release.
+
 ## PAS v4.17.4 - 2026-08-14
 
 ### Fixed

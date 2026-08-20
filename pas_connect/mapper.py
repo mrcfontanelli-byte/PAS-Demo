@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 from typing import Any, Iterable, Mapping
 
+from modules.session_categories import canonical_session_category
 from .exceptions import MappingError
 
 
@@ -14,18 +16,25 @@ def _required(payload: Mapping[str, Any], key: str) -> Any:
     return value
 
 
+def _normalize_season(value: object) -> object:
+    text = str(value or "").strip()
+    match = re.fullmatch(r"(\d{4})\s*[-/ ]\s*(\d{4})", text)
+    return f"{match.group(1)}/{match.group(2)}" if match else (text or None)
+
+
 def map_team(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "provider": "gpexe",
         "provider_team_id": int(_required(payload, "id")),
         "team_name": str(_required(payload, "name")).strip(),
         "club_id": payload.get("club"),
-        "season": payload.get("season"),
+        "season": _normalize_season(payload.get("season")),
         "sport": payload.get("sport"),
         "start_date": payload.get("start_date"),
         "end_date": payload.get("end_date"),
         "locked": bool(payload.get("locked", False)),
         "updated_at": payload.get("updated_on"),
+        "raw": dict(payload),
     }
 
 
@@ -112,7 +121,7 @@ def map_category(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "provider": "gpexe",
         "provider_category_id": int(_required(payload, "id")),
-        "category_name": str(_required(payload, "name")).strip(),
+        "category_name": canonical_session_category(str(_required(payload, "name"))),
         "team_id": payload.get("team"),
         "provider_color": payload.get("color"),
     }
@@ -132,14 +141,18 @@ def map_team_session(payload: Mapping[str, Any]) -> dict[str, Any]:
     session_id = int(_required(payload, "id"))
     category = payload.get("category")
     category_id = category.get("id") if isinstance(category, Mapping) else category
-    category_name = category.get("name") if isinstance(category, Mapping) else category
+    category_name = canonical_session_category(
+        category.get("name") if isinstance(category, Mapping) else category
+    )
     duration = payload.get("duration")
     return {
         "provider": "gpexe",
         "provider_session_id": session_id,
         "team_id": payload.get("team"),
         "category_id": category_id if isinstance(category_id, (int, float)) else None,
-        "session_name": str(payload.get("name") or category_name or payload.get("nature") or "").strip() or f"GPExe Session {session_id}",
+        "session_name": canonical_session_category(
+            str(payload.get("name") or category_name or payload.get("nature") or "").strip()
+        ) or f"GPExe Session {session_id}",
         "notes": payload.get("notes"),
         "start_timestamp": payload.get("startTimestamp") or payload.get("start_timestamp"),
         "end_timestamp": payload.get("end_timestamp"),
@@ -155,6 +168,7 @@ def map_team_session(payload: Mapping[str, Any]) -> dict[str, Any]:
         "match_cycle": payload.get("matchCycle"),
         "drill": payload.get("drill"),
         "drill_count": payload.get("drillCount"),
+        "raw": dict(payload),
     }
 
 def parse_headers_table(table_data: Mapping[str, Any]) -> list[dict[str, Any]]:
